@@ -46,6 +46,7 @@ int app_initialize(app_state_t *app, HINSTANCE instance) {
   app->call_on_hold = 0;
   app->recording = 0;
   app->muted = 0;
+  app->shutdown_called = 0;
 
   if (config_load(&app->config) != 0) {
     return -1;
@@ -63,6 +64,10 @@ void app_shutdown(app_state_t *app) {
   if (!app) {
     return;
   }
+  if (app->shutdown_called) {
+    return;
+  }
+  app->shutdown_called = 1;
   sip_shutdown(&app->sip);
   contacts_free(&app->contacts);
   history_free(&app->history);
@@ -200,4 +205,5 @@ void app_on_call_end(app_state_t *app, pjsua_call_id call_id,
   entry.duration_sec = duration_sec;
   history_add(&app->history, &entry);
   ui_set_status_text("Call ended");
+  ui_refresh_history();
 }

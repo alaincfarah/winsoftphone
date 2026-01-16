@@ -20,6 +20,7 @@
 #define ID_BUTTON_BLIND_TRANSFER 204
 #define ID_BUTTON_RECORD 205
 #define ID_BUTTON_MUTE 206
+#define ID_BUTTON_CALL_SELECTED 207
 
 #define ID_MENU_SETTINGS 300
 #define ID_MENU_EXIT 301
@@ -32,10 +33,23 @@
 #define ID_SETTINGS_TX 503
 #define ID_SETTINGS_APPLY 504
 #define ID_SETTINGS_CLOSE 505
+#define ID_SETTINGS_DOMAIN 510
+#define ID_SETTINGS_USER 511
+#define ID_SETTINGS_PASSWORD 512
+#define ID_SETTINGS_PROXY 513
+#define ID_SETTINGS_TRANSPORT 514
+#define ID_SETTINGS_REGISTER 515
+
+#define ID_HISTORY_LIST 700
+
+#define ID_TRAY_ICON 800
+#define ID_TRAY_OPEN 801
+#define ID_TRAY_EXIT 802
 
 #define WM_APP_STATUS (WM_APP + 1)
 #define WM_APP_LINE (WM_APP + 2)
 #define WM_APP_OPEN_URL (WM_APP + 3)
+#define WM_APP_TRAY (WM_APP + 4)
 
 typedef struct {
   HWND hwnd;
@@ -43,6 +57,12 @@ typedef struct {
   HWND list_playback;
   HWND slider_rx;
   HWND slider_tx;
+  HWND edit_domain;
+  HWND edit_user;
+  HWND edit_password;
+  HWND edit_proxy;
+  HWND edit_transport;
+  HWND button_register;
 } settings_state_t;
 
 static app_state_t *g_app = NULL;
@@ -54,6 +74,11 @@ static HWND g_button_hold = NULL;
 static HWND g_button_record = NULL;
 static HWND g_button_mute = NULL;
 static HWND g_button_warm = NULL;
+static HWND g_history_list = NULL;
+static HWND g_button_call_selected = NULL;
+static NOTIFYICONDATAA g_tray_icon;
+static int g_tray_added = 0;
+static int g_allow_close = 0;
 
 static LRESULT CALLBACK ui_wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
 static LRESULT CALLBACK settings_wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
@@ -66,6 +91,179 @@ static void ui_append_dial_text(const char *text) {
   }
   strcat(buffer, text);
   SetWindowTextA(g_dial_edit, buffer);
+}
+
+static void ui_get_edit_text(HWND edit, char *out, size_t out_size) {
+  if (!out || out_size == 0) {
+    return;
+  }
+  if (!edit) {
+    out[0] = '\0';
+    return;
+  }
+  GetWindowTextA(edit, out, (int)out_size);
+  out[out_size - 1] = '\0';
+}
+
+static void ui_show_main_window(void) {
+  if (!g_hwnd) {
+    return;
+  }
+  ShowWindow(g_hwnd, SW_SHOW);
+  SetForegroundWindow(g_hwnd);
+}
+
+static void ui_hide_main_window(void) {
+  if (!g_hwnd) {
+    return;
+  }
+  ShowWindow(g_hwnd, SW_HIDE);
+}
+
+static void ui_remove_tray_icon(void) {
+  if (!g_tray_added) {
+    return;
+  }
+  Shell_NotifyIconA(NIM_DELETE, &g_tray_icon);
+  g_tray_added = 0;
+}
+
+static void ui_init_tray_icon(void) {
+  if (!g_hwnd) {
+    return;
+  }
+  memset(&g_tray_icon, 0, sizeof(g_tray_icon));
+  g_tray_icon.cbSize = sizeof(g_tray_icon);
+  g_tray_icon.hWnd = g_hwnd;
+  g_tray_icon.uID = ID_TRAY_ICON;
+  g_tray_icon.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
+  g_tray_icon.uCallbackMessage = WM_APP_TRAY;
+  g_tray_icon.hIcon = LoadIcon(NULL, IDI_APPLICATION);
+  strcpy(g_tray_icon.szTip, APP_TITLE);
+  if (Shell_NotifyIconA(NIM_ADD, &g_tray_icon)) {
+    g_tray_added = 1;
+  }
+}
+
+static void ui_show_tray_menu(void) {
+  HMENU menu;
+  POINT pos;
+  if (!g_hwnd) {
+    return;
+  }
+  menu = CreatePopupMenu();
+  if (!menu) {
+    return;
+  }
+  AppendMenuA(menu, MF_STRING, ID_TRAY_OPEN, "Open WinSoftphone");
+  AppendMenuA(menu, MF_STRING, ID_TRAY_EXIT, "Exit");
+  GetCursorPos(&pos);
+  SetForegroundWindow(g_hwnd);
+  TrackPopupMenu(menu, TPM_RIGHTBUTTON, pos.x, pos.y, 0, g_hwnd, NULL);
+  DestroyMenu(menu);
+}
+
+static void ui_exit_application(void) {
+  if (!g_hwnd) {
+    return;
+  }
+  if (g_app) {
+    app_shutdown(g_app);
+  }
+  g_allow_close = 1;
+  DestroyWindow(g_hwnd);
+}
+
+static void ui_format_duration(int duration_sec, char *out, size_t out_size) {
+  int minutes;
+  int seconds;
+  if (!out || out_size == 0) {
+    return;
+  }
+  minutes = duration_sec / 60;
+  seconds = duration_sec % 60;
+  snprintf(out, out_size, "%02d:%02d", minutes, seconds);
+}
+
+static void ui_refresh_history_list(void) {
+  if (!g_history_list || !g_app) {
+    return;
+  }
+  ListView_DeleteAllItems(g_history_list);
+  for (size_t i = 0; i < g_app->history.count; i++) {
+    char duration[32];
+    const history_entry_t *entry = &g_app->history.items[i];
+    LVITEMA item;
+    memset(&item, 0, sizeof(item));
+    item.mask = LVIF_TEXT;
+    item.iItem = (int)i;
+    item.pszText = (LPSTR)entry->number;
+    ListView_InsertItem(g_history_list, &item);
+    ListView_SetItemText(g_history_list, (int)i, 1, (LPSTR)entry->cname);
+    ListView_SetItemText(g_history_list, (int)i, 2, (LPSTR)entry->direction);
+    ListView_SetItemText(g_history_list, (int)i, 3, (LPSTR)entry->timestamp);
+    ui_format_duration(entry->duration_sec, duration, sizeof(duration));
+    ListView_SetItemText(g_history_list, (int)i, 4, duration);
+  }
+}
+
+static void ui_init_history_list(HWND parent) {
+  LVCOLUMNA col;
+  if (!parent) {
+    return;
+  }
+  g_history_list = CreateWindowExA(
+      WS_EX_CLIENTEDGE, WC_LISTVIEWA, "",
+      WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS,
+      520, 60, 340, 320, parent, (HMENU)(UINT_PTR)ID_HISTORY_LIST,
+      g_app->instance, NULL);
+  if (!g_history_list) {
+    return;
+  }
+  ListView_SetExtendedListViewStyle(g_history_list,
+                                    LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES);
+  memset(&col, 0, sizeof(col));
+  col.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_SUBITEM;
+  col.pszText = "Number";
+  col.cx = 110;
+  ListView_InsertColumn(g_history_list, 0, &col);
+  col.pszText = "Name";
+  col.cx = 120;
+  col.iSubItem = 1;
+  ListView_InsertColumn(g_history_list, 1, &col);
+  col.pszText = "Direction";
+  col.cx = 80;
+  col.iSubItem = 2;
+  ListView_InsertColumn(g_history_list, 2, &col);
+  col.pszText = "Time";
+  col.cx = 140;
+  col.iSubItem = 3;
+  ListView_InsertColumn(g_history_list, 3, &col);
+  col.pszText = "Duration";
+  col.cx = 70;
+  col.iSubItem = 4;
+  ListView_InsertColumn(g_history_list, 4, &col);
+}
+
+static void ui_call_selected_history(void) {
+  int selected;
+  char number[128];
+  if (!g_history_list) {
+    return;
+  }
+  selected = ListView_GetNextItem(g_history_list, -1, LVNI_SELECTED);
+  if (selected == -1) {
+    ui_set_status_text("Select a history entry");
+    return;
+  }
+  ListView_GetItemText(g_history_list, selected, 0, number, (int)sizeof(number));
+  number[sizeof(number) - 1] = '\0';
+  if (number[0] == '\0') {
+    ui_set_status_text("Selected entry has no number");
+    return;
+  }
+  SetWindowTextA(g_dial_edit, number);
+  ui_handle_call();
 }
 
 static void ui_handle_dtmf(const char *digit) {
@@ -206,7 +404,7 @@ static void ui_open_settings_window(void) {
   HWND hwnd = CreateWindowExA(
       0, class_name, "Settings",
       WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
-      CW_USEDEFAULT, CW_USEDEFAULT, 480, 320,
+      CW_USEDEFAULT, CW_USEDEFAULT, 560, 520,
       g_hwnd, NULL, g_app->instance, NULL);
   ShowWindow(hwnd, SW_SHOW);
 }
@@ -231,10 +429,47 @@ static void settings_apply(settings_state_t *state) {
   g_app->config.rx_level = rx_pos / 100.0f;
   g_app->config.tx_level = tx_pos / 100.0f;
   g_app->sip.last_tx_level = g_app->config.tx_level;
+  ui_get_edit_text(state->edit_domain, g_app->config.sip_domain,
+                   sizeof(g_app->config.sip_domain));
+  ui_get_edit_text(state->edit_user, g_app->config.sip_user,
+                   sizeof(g_app->config.sip_user));
+  ui_get_edit_text(state->edit_password, g_app->config.sip_password,
+                   sizeof(g_app->config.sip_password));
+  ui_get_edit_text(state->edit_proxy, g_app->config.sip_proxy,
+                   sizeof(g_app->config.sip_proxy));
+  ui_get_edit_text(state->edit_transport, g_app->config.sip_transport,
+                   sizeof(g_app->config.sip_transport));
   sip_set_audio_devices(capture_id, playback_id);
   sip_set_volume_levels(g_app->config.rx_level, g_app->config.tx_level);
   config_save(&g_app->config);
   ui_set_status_text("Settings updated");
+}
+
+static void settings_register(settings_state_t *state) {
+  if (!g_app || !state) {
+    return;
+  }
+  ui_get_edit_text(state->edit_domain, g_app->config.sip_domain,
+                   sizeof(g_app->config.sip_domain));
+  ui_get_edit_text(state->edit_user, g_app->config.sip_user,
+                   sizeof(g_app->config.sip_user));
+  ui_get_edit_text(state->edit_password, g_app->config.sip_password,
+                   sizeof(g_app->config.sip_password));
+  ui_get_edit_text(state->edit_proxy, g_app->config.sip_proxy,
+                   sizeof(g_app->config.sip_proxy));
+  ui_get_edit_text(state->edit_transport, g_app->config.sip_transport,
+                   sizeof(g_app->config.sip_transport));
+  config_save(&g_app->config);
+  if (sip_register_account(&g_app->sip,
+                           g_app->config.sip_domain,
+                           g_app->config.sip_user,
+                           g_app->config.sip_password,
+                           g_app->config.sip_proxy,
+                           g_app->config.sip_transport) == 0) {
+    ui_set_status_text("Registration sent");
+  } else {
+    ui_set_status_text("Registration failed");
+  }
 }
 
 static LRESULT CALLBACK settings_wnd_proc(HWND hwnd, UINT msg,
@@ -289,25 +524,82 @@ static LRESULT CALLBACK settings_wnd_proc(HWND hwnd, UINT msg,
       SendMessage(state->slider_tx, TBM_SETPOS, TRUE,
                   (LPARAM)(g_app->config.tx_level * 100));
 
+      CreateWindowExA(0, "BUTTON", "Account",
+                      WS_CHILD | WS_VISIBLE | BS_GROUPBOX,
+                      20, 235, 420, 190, hwnd, NULL, g_app->instance, NULL);
+      CreateWindowExA(0, "STATIC", "Domain",
+                      WS_CHILD | WS_VISIBLE,
+                      30, 260, 100, 18, hwnd, NULL, g_app->instance, NULL);
+      state->edit_domain = CreateWindowExA(
+          WS_EX_CLIENTEDGE, "EDIT", "",
+          WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
+          140, 258, 280, 22, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_DOMAIN,
+          g_app->instance, NULL);
+      CreateWindowExA(0, "STATIC", "User",
+                      WS_CHILD | WS_VISIBLE,
+                      30, 288, 100, 18, hwnd, NULL, g_app->instance, NULL);
+      state->edit_user = CreateWindowExA(
+          WS_EX_CLIENTEDGE, "EDIT", "",
+          WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
+          140, 286, 280, 22, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_USER,
+          g_app->instance, NULL);
+      CreateWindowExA(0, "STATIC", "Password",
+                      WS_CHILD | WS_VISIBLE,
+                      30, 316, 100, 18, hwnd, NULL, g_app->instance, NULL);
+      state->edit_password = CreateWindowExA(
+          WS_EX_CLIENTEDGE, "EDIT", "",
+          WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | ES_PASSWORD,
+          140, 314, 280, 22, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_PASSWORD,
+          g_app->instance, NULL);
+      CreateWindowExA(0, "STATIC", "Proxy",
+                      WS_CHILD | WS_VISIBLE,
+                      30, 344, 100, 18, hwnd, NULL, g_app->instance, NULL);
+      state->edit_proxy = CreateWindowExA(
+          WS_EX_CLIENTEDGE, "EDIT", "",
+          WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
+          140, 342, 280, 22, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_PROXY,
+          g_app->instance, NULL);
+      CreateWindowExA(0, "STATIC", "Transport",
+                      WS_CHILD | WS_VISIBLE,
+                      30, 372, 100, 18, hwnd, NULL, g_app->instance, NULL);
+      state->edit_transport = CreateWindowExA(
+          WS_EX_CLIENTEDGE, "EDIT", "",
+          WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
+          140, 370, 120, 22, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_TRANSPORT,
+          g_app->instance, NULL);
+      state->button_register = CreateWindowExA(
+          0, "BUTTON", "Register",
+          WS_CHILD | WS_VISIBLE,
+          280, 368, 140, 26, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_REGISTER,
+          g_app->instance, NULL);
+
       CreateWindowExA(0, "BUTTON", "Apply",
                       WS_CHILD | WS_VISIBLE,
-                      240, 235, 90, 30, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_APPLY,
+                      240, 440, 90, 30, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_APPLY,
                       g_app->instance, NULL);
       CreateWindowExA(0, "BUTTON", "Close",
                       WS_CHILD | WS_VISIBLE,
-                      350, 235, 90, 30, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_CLOSE,
+                      350, 440, 90, 30, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_CLOSE,
                       g_app->instance, NULL);
 
       ui_fill_device_list(state->list_capture, 1, 0);
       ui_fill_device_list(state->list_playback, 0, 1);
       ui_select_device(state->list_capture, g_app->config.capture_device);
       ui_select_device(state->list_playback, g_app->config.playback_device);
+      SetWindowTextA(state->edit_domain, g_app->config.sip_domain);
+      SetWindowTextA(state->edit_user, g_app->config.sip_user);
+      SetWindowTextA(state->edit_password, g_app->config.sip_password);
+      SetWindowTextA(state->edit_proxy, g_app->config.sip_proxy);
+      SetWindowTextA(state->edit_transport, g_app->config.sip_transport);
       break;
     }
     case WM_COMMAND: {
       switch (LOWORD(wparam)) {
         case ID_SETTINGS_APPLY:
           settings_apply(state);
+          break;
+        case ID_SETTINGS_REGISTER:
+          settings_register(state);
           break;
         case ID_SETTINGS_CLOSE:
           DestroyWindow(hwnd);
@@ -358,12 +650,15 @@ int ui_init(app_state_t *app) {
   int start_y = 100;
   int btn_w = 50;
   int btn_h = 40;
+  INITCOMMONCONTROLSEX icex;
 
   if (!app) {
     return -1;
   }
   g_app = app;
-  InitCommonControls();
+  icex.dwSize = sizeof(icex);
+  icex.dwICC = ICC_LISTVIEW_CLASSES | ICC_BAR_CLASSES;
+  InitCommonControlsEx(&icex);
   if (ui_register_classes() != 0) {
     return -1;
   }
@@ -371,7 +666,7 @@ int ui_init(app_state_t *app) {
   g_hwnd = CreateWindowExA(
       0, APP_TITLE, APP_TITLE,
       WS_OVERLAPPED | WS_SYSMENU | WS_MINIMIZEBOX,
-      CW_USEDEFAULT, CW_USEDEFAULT, 520, 420,
+      CW_USEDEFAULT, CW_USEDEFAULT, 900, 520,
       NULL, NULL, g_app->instance, NULL);
   if (!g_hwnd) {
     return -1;
@@ -447,6 +742,15 @@ int ui_init(app_state_t *app) {
       300, 270, 180, 30, g_hwnd, (HMENU)(UINT_PTR)ID_BUTTON_MUTE,
       g_app->instance, NULL);
 
+  ui_init_history_list(g_hwnd);
+  g_button_call_selected = CreateWindowExA(
+      0, "BUTTON", "Call Selected",
+      WS_CHILD | WS_VISIBLE,
+      520, 390, 340, 30, g_hwnd, (HMENU)(UINT_PTR)ID_BUTTON_CALL_SELECTED,
+      g_app->instance, NULL);
+  ui_refresh_history_list();
+
+  ui_init_tray_icon();
   ShowWindow(g_hwnd, SW_SHOW);
   return 0;
 }
@@ -481,6 +785,10 @@ void ui_open_url(const char *url) {
   PostMessage(g_hwnd, WM_APP_OPEN_URL, 0, (LPARAM)_strdup(url));
 }
 
+void ui_refresh_history(void) {
+  ui_refresh_history_list();
+}
+
 static LRESULT CALLBACK ui_wnd_proc(HWND hwnd, UINT msg,
                                     WPARAM wparam, LPARAM lparam) {
   switch (msg) {
@@ -513,15 +821,32 @@ static LRESULT CALLBACK ui_wnd_proc(HWND hwnd, UINT msg,
           case ID_BUTTON_MUTE:
             ui_handle_mute();
             break;
+          case ID_BUTTON_CALL_SELECTED:
+            ui_call_selected_history();
+            break;
           case ID_MENU_SETTINGS:
             ui_open_settings_window();
             break;
           case ID_MENU_EXIT:
-            PostMessage(hwnd, WM_CLOSE, 0, 0);
+            ui_exit_application();
+            break;
+          case ID_TRAY_OPEN:
+            ui_show_main_window();
+            break;
+          case ID_TRAY_EXIT:
+            ui_exit_application();
             break;
           default:
             break;
         }
+      }
+      break;
+    }
+    case WM_NOTIFY: {
+      LPNMHDR header = (LPNMHDR)lparam;
+      if (header && header->idFrom == ID_HISTORY_LIST &&
+          header->code == NM_DBLCLK) {
+        ui_call_selected_history();
       }
       break;
     }
@@ -549,7 +874,24 @@ static LRESULT CALLBACK ui_wnd_proc(HWND hwnd, UINT msg,
       }
       break;
     }
+    case WM_APP_TRAY: {
+      if (lparam == WM_LBUTTONDBLCLK) {
+        ui_show_main_window();
+      } else if (lparam == WM_RBUTTONUP || lparam == WM_CONTEXTMENU) {
+        ui_show_tray_menu();
+      }
+      break;
+    }
+    case WM_CLOSE:
+      if (g_allow_close) {
+        DestroyWindow(hwnd);
+      } else {
+        ui_hide_main_window();
+        ui_set_status_text("WinSoftphone minimized to tray");
+      }
+      return 0;
     case WM_DESTROY:
+      ui_remove_tray_icon();
       PostQuitMessage(0);
       break;
     default:

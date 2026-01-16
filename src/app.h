@@ -25,6 +25,7 @@ typedef struct {
   int call_on_hold;
   int recording;
   int muted;
+  int shutdown_called;
 } app_state_t;
 
 int app_initialize(app_state_t *app, HINSTANCE instance);
