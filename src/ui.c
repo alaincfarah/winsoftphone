@@ -253,7 +253,7 @@ static LRESULT CALLBACK settings_wnd_proc(HWND hwnd, UINT msg,
       state->list_capture = CreateWindowExA(
           WS_EX_CLIENTEDGE, "LISTBOX", "",
           WS_CHILD | WS_VISIBLE | LBS_NOTIFY,
-          20, 45, 200, 120, hwnd, (HMENU)ID_SETTINGS_CAPTURE,
+          20, 45, 200, 120, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_CAPTURE,
           g_app->instance, NULL);
 
       CreateWindowExA(0, "STATIC", "Speakers",
@@ -262,7 +262,7 @@ static LRESULT CALLBACK settings_wnd_proc(HWND hwnd, UINT msg,
       state->list_playback = CreateWindowExA(
           WS_EX_CLIENTEDGE, "LISTBOX", "",
           WS_CHILD | WS_VISIBLE | LBS_NOTIFY,
-          240, 45, 200, 120, hwnd, (HMENU)ID_SETTINGS_PLAYBACK,
+          240, 45, 200, 120, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_PLAYBACK,
           g_app->instance, NULL);
 
       CreateWindowExA(0, "STATIC", "Playback Volume",
@@ -271,7 +271,7 @@ static LRESULT CALLBACK settings_wnd_proc(HWND hwnd, UINT msg,
       state->slider_rx = CreateWindowExA(
           0, TRACKBAR_CLASS, "",
           WS_CHILD | WS_VISIBLE | TBS_AUTOTICKS,
-          20, 195, 200, 30, hwnd, (HMENU)ID_SETTINGS_RX,
+          20, 195, 200, 30, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_RX,
           g_app->instance, NULL);
       SendMessage(state->slider_rx, TBM_SETRANGE, TRUE, MAKELPARAM(0, 200));
       SendMessage(state->slider_rx, TBM_SETPOS, TRUE,
@@ -283,7 +283,7 @@ static LRESULT CALLBACK settings_wnd_proc(HWND hwnd, UINT msg,
       state->slider_tx = CreateWindowExA(
           0, TRACKBAR_CLASS, "",
           WS_CHILD | WS_VISIBLE | TBS_AUTOTICKS,
-          240, 195, 200, 30, hwnd, (HMENU)ID_SETTINGS_TX,
+          240, 195, 200, 30, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_TX,
           g_app->instance, NULL);
       SendMessage(state->slider_tx, TBM_SETRANGE, TRUE, MAKELPARAM(0, 200));
       SendMessage(state->slider_tx, TBM_SETPOS, TRUE,
@@ -291,11 +291,11 @@ static LRESULT CALLBACK settings_wnd_proc(HWND hwnd, UINT msg,
 
       CreateWindowExA(0, "BUTTON", "Apply",
                       WS_CHILD | WS_VISIBLE,
-                      240, 235, 90, 30, hwnd, (HMENU)ID_SETTINGS_APPLY,
+                      240, 235, 90, 30, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_APPLY,
                       g_app->instance, NULL);
       CreateWindowExA(0, "BUTTON", "Close",
                       WS_CHILD | WS_VISIBLE,
-                      350, 235, 90, 30, hwnd, (HMENU)ID_SETTINGS_CLOSE,
+                      350, 235, 90, 30, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_CLOSE,
                       g_app->instance, NULL);
 
       ui_fill_device_list(state->list_capture, 1, 0);
@@ -386,17 +386,17 @@ int ui_init(app_state_t *app) {
   g_status_label = CreateWindowExA(
       0, "STATIC", "Idle",
       WS_CHILD | WS_VISIBLE,
-      20, 10, 480, 20, g_hwnd, (HMENU)ID_STATUS_TEXT,
+      20, 10, 480, 20, g_hwnd, (HMENU)(UINT_PTR)ID_STATUS_TEXT,
       g_app->instance, NULL);
   g_line_label = CreateWindowExA(
       0, "STATIC", "Line: Ready",
       WS_CHILD | WS_VISIBLE,
-      20, 30, 480, 20, g_hwnd, (HMENU)ID_LINE_TEXT,
+      20, 30, 480, 20, g_hwnd, (HMENU)(UINT_PTR)ID_LINE_TEXT,
       g_app->instance, NULL);
   g_dial_edit = CreateWindowExA(
       WS_EX_CLIENTEDGE, "EDIT", "",
       WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
-      20, 60, 240, 24, g_hwnd, (HMENU)ID_EDIT_DIAL,
+      20, 60, 240, 24, g_hwnd, (HMENU)(UINT_PTR)ID_EDIT_DIAL,
       g_app->instance, NULL);
 
   for (int i = 0; i < 12; i++) {
@@ -407,44 +407,44 @@ int ui_init(app_state_t *app) {
         WS_CHILD | WS_VISIBLE,
         start_x + col * (btn_w + 10),
         start_y + row * (btn_h + 10),
-        btn_w, btn_h, g_hwnd, (HMENU)(ID_DTMF_BASE + i),
+        btn_w, btn_h, g_hwnd, (HMENU)(UINT_PTR)(ID_DTMF_BASE + i),
         g_app->instance, NULL);
   }
 
   CreateWindowExA(
       0, "BUTTON", "Call",
       WS_CHILD | WS_VISIBLE,
-      300, 60, 180, 30, g_hwnd, (HMENU)ID_BUTTON_CALL,
+      300, 60, 180, 30, g_hwnd, (HMENU)(UINT_PTR)ID_BUTTON_CALL,
       g_app->instance, NULL);
   CreateWindowExA(
       0, "BUTTON", "Hangup",
       WS_CHILD | WS_VISIBLE,
-      300, 95, 180, 30, g_hwnd, (HMENU)ID_BUTTON_HANGUP,
+      300, 95, 180, 30, g_hwnd, (HMENU)(UINT_PTR)ID_BUTTON_HANGUP,
       g_app->instance, NULL);
   g_button_hold = CreateWindowExA(
       0, "BUTTON", "Hold",
       WS_CHILD | WS_VISIBLE,
-      300, 130, 180, 30, g_hwnd, (HMENU)ID_BUTTON_HOLD,
+      300, 130, 180, 30, g_hwnd, (HMENU)(UINT_PTR)ID_BUTTON_HOLD,
       g_app->instance, NULL);
   g_button_warm = CreateWindowExA(
       0, "BUTTON", "Warm Transfer",
       WS_CHILD | WS_VISIBLE,
-      300, 165, 180, 30, g_hwnd, (HMENU)ID_BUTTON_WARM_TRANSFER,
+      300, 165, 180, 30, g_hwnd, (HMENU)(UINT_PTR)ID_BUTTON_WARM_TRANSFER,
       g_app->instance, NULL);
   CreateWindowExA(
       0, "BUTTON", "Blind Transfer",
       WS_CHILD | WS_VISIBLE,
-      300, 200, 180, 30, g_hwnd, (HMENU)ID_BUTTON_BLIND_TRANSFER,
+      300, 200, 180, 30, g_hwnd, (HMENU)(UINT_PTR)ID_BUTTON_BLIND_TRANSFER,
       g_app->instance, NULL);
   g_button_record = CreateWindowExA(
       0, "BUTTON", "Record",
       WS_CHILD | WS_VISIBLE,
-      300, 235, 180, 30, g_hwnd, (HMENU)ID_BUTTON_RECORD,
+      300, 235, 180, 30, g_hwnd, (HMENU)(UINT_PTR)ID_BUTTON_RECORD,
       g_app->instance, NULL);
   g_button_mute = CreateWindowExA(
       0, "BUTTON", "Mute",
       WS_CHILD | WS_VISIBLE,
-      300, 270, 180, 30, g_hwnd, (HMENU)ID_BUTTON_MUTE,
+      300, 270, 180, 30, g_hwnd, (HMENU)(UINT_PTR)ID_BUTTON_MUTE,
       g_app->instance, NULL);
 
   ShowWindow(g_hwnd, SW_SHOW);

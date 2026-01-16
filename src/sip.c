@@ -245,9 +245,12 @@ static void sip_on_call_media_state(pjsua_call_id call_id) {
 }
 
 static void sip_configure_codecs(void) {
-  pjsua_codec_set_priority(pj_str("G729/8000/1"), PJMEDIA_CODEC_PRIO_HIGHEST);
-  pjsua_codec_set_priority(pj_str("PCMU/8000/1"), PJMEDIA_CODEC_PRIO_HIGHEST);
-  pjsua_codec_set_priority(pj_str("PCMA/8000/1"), PJMEDIA_CODEC_PRIO_HIGHEST);
+  pj_str_t codec_g729 = pj_str("G729/8000/1");
+  pj_str_t codec_pcmu = pj_str("PCMU/8000/1");
+  pj_str_t codec_pcma = pj_str("PCMA/8000/1");
+  pjsua_codec_set_priority(&codec_g729, PJMEDIA_CODEC_PRIO_HIGHEST);
+  pjsua_codec_set_priority(&codec_pcmu, PJMEDIA_CODEC_PRIO_HIGHEST);
+  pjsua_codec_set_priority(&codec_pcma, PJMEDIA_CODEC_PRIO_HIGHEST);
 }
 
 int sip_init(sip_client_t *client) {
@@ -340,7 +343,7 @@ int sip_register_account(sip_client_t *client,
                     _stricmp(transport, "tls") == 0)) {
     pjsua_transport_id transport_id;
     pjsua_transport_config transport_cfg;
-    pjsua_transport_type_e transport_type =
+    pjsip_transport_type_e transport_type =
         (_stricmp(transport, "tls") == 0) ? PJSIP_TRANSPORT_TLS
                                           : PJSIP_TRANSPORT_TCP;
     pjsua_transport_config_default(&transport_cfg);
@@ -452,7 +455,7 @@ int sip_complete_warm_transfer(sip_client_t *client) {
     return -1;
   }
   return pjsua_call_xfer_replaces(client->active_call_id,
-                                  client->warm_transfer_call_id, 0) == PJ_SUCCESS
+                                  client->warm_transfer_call_id, 0, NULL) == PJ_SUCCESS
              ? 0
              : -1;
 }
@@ -482,7 +485,8 @@ int sip_start_recording(sip_client_t *client, const char *path) {
   }
 
   file_name = pj_str((char *)path);
-  status = pjsua_recorder_create(&file_name, 0, NULL, 0, &client->recorder_id);
+  status = pjsua_recorder_create(&file_name, 0, NULL, 0, 0,
+                                 &client->recorder_id);
   if (status != PJ_SUCCESS) {
     return -1;
   }
@@ -505,7 +509,7 @@ int sip_stop_recording(sip_client_t *client) {
 
 int sip_list_audio_devices(sip_audio_device_t *devices, unsigned *count) {
   unsigned dev_count = 0;
-  pjsua_aud_dev_info info[64];
+  pjmedia_aud_dev_info info[64];
   pj_status_t status;
   if (!count) {
     return -1;
@@ -525,8 +529,7 @@ int sip_list_audio_devices(sip_audio_device_t *devices, unsigned *count) {
     devices[i].id = info[i].id;
     devices[i].input_count = info[i].input_count;
     devices[i].output_count = info[i].output_count;
-    snprintf(devices[i].name, sizeof(devices[i].name), "%s",
-             (const char *)info[i].name);
+    snprintf(devices[i].name, sizeof(devices[i].name), "%s", info[i].name);
   }
   *count = dev_count;
   return 0;
