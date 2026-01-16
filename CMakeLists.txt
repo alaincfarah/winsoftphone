@@ -11,7 +11,6 @@ endif()
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
-add_definitions(-DWIN32_LEAN_AND_MEAN)
 
 add_executable(winsoftphone
   src/main.c
@@ -76,7 +75,7 @@ target_include_directories(winsoftphone PRIVATE
 target_link_directories(winsoftphone PRIVATE ${PJSIP_LIB_DIRS})
 
 target_link_libraries(winsoftphone PRIVATE
-  pjsua
+  pjsua-lib
   pjsip-ua
   pjsip-simple
   pjsip
