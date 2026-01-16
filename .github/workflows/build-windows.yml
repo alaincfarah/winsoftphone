@@ -1,0 +1,132 @@
+name: Build Windows Installer
+
+on:
+  push:
+    branches:
+      - cursor/windows-softphone-client-ac85
+  pull_request:
+    branches:
+      - cursor/windows-softphone-client-ac85
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      VCPKG_ROOT: C:\vcpkg
+      VCPKG_DEFAULT_TRIPLET: x64-windows
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare vcpkg
+        shell: powershell
+        run: |
+          if (!(Test-Path "$env:VCPKG_ROOT")) {
+            git clone https://github.com/microsoft/vcpkg $env:VCPKG_ROOT
+          }
+          & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat"
+
+      - name: Install OpenSSL and libsamplerate
+        shell: powershell
+        run: |
+          & "$env:VCPKG_ROOT\vcpkg.exe" install openssl:x64-windows
+          & "$env:VCPKG_ROOT\vcpkg.exe" install libsamplerate:x64-windows
+
+      - name: Build PJSIP from source
+        shell: powershell
+        run: |
+          git clone --depth 1 https://github.com/pjsip/pjproject pjproject
+          New-Item -ItemType Directory -Force "pjproject\pjlib\include\pj" | Out-Null
+          $cfgLines = @(
+            "/* custom config_site.h for CI */"
+          )
+          Set-Content -Encoding ASCII "pjproject\pjlib\include\pj\config_site.h" `
+            -Value ($cfgLines -join "`r`n")
+          $resamplePath = "pjproject\pjmedia\src\pjmedia\resample_libsamplerate.c"
+          if (Test-Path $resamplePath) {
+            (Get-Content $resamplePath) `
+              -replace '#\s*pragma comment\( lib,.*libsamplerate.*\)', '// linked via vcpkg' `
+              | Set-Content -Encoding ASCII $resamplePath
+          }
+          $opensslRoot = "$env:VCPKG_ROOT\installed\x64-windows"
+          cmake -S pjproject -B pjproject/build_pjsip -G "Visual Studio 17 2022" -A x64 `
+            -DPJ_HAS_SSL_SOCK=1 `
+            -DPJ_SKIP_EXPERIMENTAL_NOTICE=ON `
+            -DBUILD_TESTING=OFF `
+            -DPJMEDIA_WITH_VIDEO=OFF `
+            -DPJMEDIA_WITH_LIBYUV=OFF `
+            -DPJMEDIA_WITH_SRTP=OFF `
+            -DPJMEDIA_WITH_RESAMPLE=libsamplerate `
+            -DPJMEDIA_WITH_SPEEX_CODEC=OFF `
+            -DPJMEDIA_WITH_GSM_CODEC=OFF `
+            -DPJMEDIA_WITH_ILBC_CODEC=OFF `
+            -DPJMEDIA_WITH_G7221_CODEC=OFF `
+            -DPJMEDIA_WITH_OPENCORE_AMRNB_CODEC=OFF `
+            -DPJMEDIA_WITH_OPENCORE_AMRWB_CODEC=OFF `
+            -DPJMEDIA_WITH_SILK_CODEC=OFF `
+            -DPJMEDIA_WITH_OPUS_CODEC=OFF `
+            -DPJMEDIA_WITH_BCG729_CODEC=OFF `
+            -DPJMEDIA_WITH_LYRA_CODEC=OFF `
+            -DPJMEDIA_WITH_VPX_CODEC=OFF `
+            -DPJMEDIA_WITH_OPEN_H264_CODEC=OFF `
+            -DOPENSSL_ROOT_DIR="$opensslRoot" `
+            -DCMAKE_PREFIX_PATH="$opensslRoot"
+          cmake --build pjproject/build_pjsip --config Release --target `
+            pjlib pjlib-util pjnath pjmedia pjmedia-codec `
+            pjmedia-audiodev pjmedia-videodev pjsip pjsip-simple `
+            pjsip-ua pjsua-lib
+          $pjSdk = Join-Path $pwd "pjsip_sdk"
+          New-Item -ItemType Directory -Force "$pjSdk\pjsip\include" | Out-Null
+          New-Item -ItemType Directory -Force "$pjSdk\pjlib\include" | Out-Null
+          New-Item -ItemType Directory -Force "$pjSdk\pjlib-util\include" | Out-Null
+          New-Item -ItemType Directory -Force "$pjSdk\pjnath\include" | Out-Null
+          New-Item -ItemType Directory -Force "$pjSdk\pjmedia\include" | Out-Null
+          Copy-Item "pjproject\pjsip\include\*" -Destination "$pjSdk\pjsip\include" -Recurse -Force
+          Copy-Item "pjproject\pjlib\include\*" -Destination "$pjSdk\pjlib\include" -Recurse -Force
+          Copy-Item "pjproject\pjlib-util\include\*" -Destination "$pjSdk\pjlib-util\include" -Recurse -Force
+          Copy-Item "pjproject\pjnath\include\*" -Destination "$pjSdk\pjnath\include" -Recurse -Force
+          Copy-Item "pjproject\pjmedia\include\*" -Destination "$pjSdk\pjmedia\include" -Recurse -Force
+          New-Item -ItemType Directory -Force "$pjSdk\lib" | Out-Null
+          Get-ChildItem -Path "pjproject\build_pjsip" -Recurse -Filter *.lib -ErrorAction SilentlyContinue | Copy-Item -Destination "$pjSdk\lib" -Force
+          Add-Content $env:GITHUB_ENV "PJSIP_DIR=$((Resolve-Path $pjSdk).Path)"
+
+      - name: Configure
+        shell: powershell
+        run: |
+          $opensslRoot = "$env:VCPKG_ROOT\installed\x64-windows"
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64 `
+            -DPJSIP_DIR="$env:PJSIP_DIR" `
+            -DOPENSSL_ROOT_DIR="$opensslRoot" `
+            -DCMAKE_PREFIX_PATH="$opensslRoot"
+
+      - name: Build
+        shell: powershell
+        run: |
+          cmake --build build --config Release
+
+      - name: Stage runtime DLLs
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force pjsip\runtime | Out-Null
+          $pjDlls = Get-ChildItem -Path "pjproject\build_pjsip" -Recurse -Filter *.dll -ErrorAction SilentlyContinue
+          if ($pjDlls) {
+            $pjDlls | Copy-Item -Destination "pjsip\runtime" -Force
+          }
+          Copy-Item "$env:VCPKG_ROOT\installed\x64-windows\bin\*.dll" -Destination "pjsip\runtime" -Force
+
+      - name: Package installer
+        shell: powershell
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) {
+            $iscc = "iscc"
+          }
+          & $iscc installer.iss
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WinSoftphoneInstaller
+          path: |
+            dist/WinSoftphoneSetup*.exe

@@ -1,0 +1,8 @@
+[
+  {
+    "name": "Example Contact",
+    "number": "1002",
+    "cname": "Alice Example",
+    "url": "https://crm.example.com/contact?name=Alice%20Example"
+  }
+]

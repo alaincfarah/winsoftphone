@@ -1,0 +1,22 @@
+{
+  "sip": {
+    "domain": "pbx.example.com",
+    "user": "1001",
+    "password": "changeme",
+    "proxy": "sip:pbx.example.com",
+    "transport": "udp"
+  },
+  "audio": {
+    "capture_device": -1,
+    "playback_device": -1,
+    "rx_level": 1.0,
+    "tx_level": 1.0
+  },
+  "recording": {
+    "auto_record": 0,
+    "base_dir": ""
+  },
+  "ui": {
+    "incoming_url_template": "https://crm.example.com/lookup?cname={cname}"
+  }
+}
