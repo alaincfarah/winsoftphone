@@ -24,7 +24,7 @@ find_package(OpenSSL REQUIRED)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-add_executable(winsoftphone
+add_executable(winsoftphone WIN32
   src/main.c
   src/app.c
   src/ui.c
