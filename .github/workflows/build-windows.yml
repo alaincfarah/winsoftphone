@@ -43,6 +43,12 @@ jobs:
           )
           Set-Content -Encoding ASCII "pjproject\pjlib\include\pj\config_site.h" `
             -Value ($cfgLines -join "`r`n")
+          $resamplePath = "pjproject\pjmedia\src\pjmedia\resample_libsamplerate.c"
+          if (Test-Path $resamplePath) {
+            (Get-Content $resamplePath) `
+              -replace '#\s*pragma comment\( lib,.*libsamplerate.*\)', '// linked via vcpkg' `
+              | Set-Content -Encoding ASCII $resamplePath
+          }
           $opensslRoot = "$env:VCPKG_ROOT\installed\x64-windows"
           cmake -S pjproject -B pjproject/build_pjsip -G "Visual Studio 17 2022" -A x64 `
             -DPJ_HAS_SSL_SOCK=1 `
