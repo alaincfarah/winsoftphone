@@ -27,6 +27,8 @@ typedef struct {
   void (*on_call_end)(void *user_data, pjsua_call_id call_id,
                       int duration_sec, const char *direction,
                       const char *cname, const char *uri);
+  void (*on_reg_state)(void *user_data, int reg_status,
+                       const char *status_text, int is_active);
 } sip_callbacks_t;
 
 typedef struct {

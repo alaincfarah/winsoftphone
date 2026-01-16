@@ -18,6 +18,8 @@ typedef struct {
   float rx_level;
   float tx_level;
   char incoming_url_template[256];
+  int auto_record;
+  char recording_base_dir[260];
 } app_config_t;
 
 void config_set_defaults(app_config_t *config);

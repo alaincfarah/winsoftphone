@@ -2,6 +2,7 @@
 
 #include <commctrl.h>
 #include <shellapi.h>
+#include <shlobj.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -33,18 +34,24 @@
 #define ID_SETTINGS_TX 503
 #define ID_SETTINGS_APPLY 504
 #define ID_SETTINGS_CLOSE 505
+#define ID_SETTINGS_TAB 506
 #define ID_SETTINGS_DOMAIN 510
 #define ID_SETTINGS_USER 511
 #define ID_SETTINGS_PASSWORD 512
 #define ID_SETTINGS_PROXY 513
 #define ID_SETTINGS_TRANSPORT 514
 #define ID_SETTINGS_REGISTER 515
+#define ID_SETTINGS_URL_TEMPLATE 516
+#define ID_SETTINGS_AUTO_RECORD 517
+#define ID_SETTINGS_RECORD_PATH 518
+#define ID_SETTINGS_RECORD_BROWSE 519
 
 #define ID_HISTORY_LIST 700
 
 #define ID_TRAY_ICON 800
 #define ID_TRAY_OPEN 801
 #define ID_TRAY_EXIT 802
+#define ID_REG_INDICATOR 803
 
 #define WM_APP_STATUS (WM_APP + 1)
 #define WM_APP_LINE (WM_APP + 2)
@@ -53,6 +60,11 @@
 
 typedef struct {
   HWND hwnd;
+  HWND tab;
+  HWND audio_controls[48];
+  int audio_count;
+  HWND automation_controls[48];
+  int automation_count;
   HWND list_capture;
   HWND list_playback;
   HWND slider_rx;
@@ -63,12 +75,17 @@ typedef struct {
   HWND edit_proxy;
   HWND edit_transport;
   HWND button_register;
+  HWND edit_url_template;
+  HWND check_auto_record;
+  HWND edit_record_path;
+  HWND button_record_browse;
 } settings_state_t;
 
 static app_state_t *g_app = NULL;
 static HWND g_hwnd = NULL;
 static HWND g_status_label = NULL;
 static HWND g_line_label = NULL;
+static HWND g_reg_indicator = NULL;
 static HWND g_dial_edit = NULL;
 static HWND g_button_hold = NULL;
 static HWND g_button_record = NULL;
@@ -79,6 +96,13 @@ static HWND g_button_call_selected = NULL;
 static NOTIFYICONDATAA g_tray_icon;
 static int g_tray_added = 0;
 static int g_allow_close = 0;
+static int g_reg_status = 0;
+static HBRUSH g_bg_brush = NULL;
+static HBRUSH g_edit_brush = NULL;
+static COLORREF g_bg_color = RGB(30, 30, 30);
+static COLORREF g_edit_color = RGB(45, 45, 48);
+static COLORREF g_text_color = RGB(229, 229, 229);
+static COLORREF g_muted_text = RGB(153, 153, 153);
 
 static LRESULT CALLBACK ui_wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
 static LRESULT CALLBACK settings_wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
@@ -104,6 +128,49 @@ static void ui_get_edit_text(HWND edit, char *out, size_t out_size) {
   }
   GetWindowTextA(edit, out, (int)out_size);
   out[out_size - 1] = '\0';
+}
+
+static void settings_register_control(HWND *list, int *count, HWND control) {
+  if (!control || !list || !count) {
+    return;
+  }
+  if (*count >= 48) {
+    return;
+  }
+  list[(*count)++] = control;
+}
+
+static void settings_show_tab(settings_state_t *state, int index) {
+  int show_audio = (index == 0);
+  int show_auto = (index == 1);
+  for (int i = 0; i < state->audio_count; i++) {
+    ShowWindow(state->audio_controls[i], show_audio ? SW_SHOW : SW_HIDE);
+  }
+  for (int i = 0; i < state->automation_count; i++) {
+    ShowWindow(state->automation_controls[i], show_auto ? SW_SHOW : SW_HIDE);
+  }
+}
+
+static int ui_browse_for_folder(char *out_path, size_t out_size) {
+  BROWSEINFOA bi;
+  LPITEMIDLIST pidl;
+  if (!out_path || out_size == 0) {
+    return -1;
+  }
+  memset(&bi, 0, sizeof(bi));
+  bi.lpszTitle = "Select recording folder";
+  bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_USENEWUI;
+  pidl = SHBrowseForFolderA(&bi);
+  if (!pidl) {
+    return -1;
+  }
+  if (!SHGetPathFromIDListA(pidl, out_path)) {
+    CoTaskMemFree(pidl);
+    return -1;
+  }
+  CoTaskMemFree(pidl);
+  out_path[out_size - 1] = '\0';
+  return 0;
 }
 
 static void ui_show_main_window(void) {
@@ -405,7 +472,7 @@ static void ui_open_settings_window(void) {
   HWND hwnd = CreateWindowExA(
       0, class_name, "Settings",
       WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
-      CW_USEDEFAULT, CW_USEDEFAULT, 560, 520,
+      CW_USEDEFAULT, CW_USEDEFAULT, 640, 600,
       g_hwnd, NULL, g_app->instance, NULL);
   ShowWindow(hwnd, SW_SHOW);
 }
@@ -440,6 +507,12 @@ static void settings_apply(settings_state_t *state) {
                    sizeof(g_app->config.sip_proxy));
   ui_get_edit_text(state->edit_transport, g_app->config.sip_transport,
                    sizeof(g_app->config.sip_transport));
+  ui_get_edit_text(state->edit_url_template, g_app->config.incoming_url_template,
+                   sizeof(g_app->config.incoming_url_template));
+  ui_get_edit_text(state->edit_record_path, g_app->config.recording_base_dir,
+                   sizeof(g_app->config.recording_base_dir));
+  g_app->config.auto_record = (SendMessage(state->check_auto_record,
+                                           BM_GETCHECK, 0, 0) == BST_CHECKED);
   sip_set_audio_devices(capture_id, playback_id);
   sip_set_volume_levels(g_app->config.rx_level, g_app->config.tx_level);
   config_save(&g_app->config);
@@ -483,104 +556,209 @@ static LRESULT CALLBACK settings_wnd_proc(HWND hwnd, UINT msg,
       SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)state);
       state->hwnd = hwnd;
 
-      CreateWindowExA(0, "STATIC", "Microphone",
-                      WS_CHILD | WS_VISIBLE,
-                      20, 20, 200, 20, hwnd, NULL, g_app->instance, NULL);
-      state->list_capture = CreateWindowExA(
-          WS_EX_CLIENTEDGE, "LISTBOX", "",
-          WS_CHILD | WS_VISIBLE | LBS_NOTIFY,
-          20, 45, 200, 120, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_CAPTURE,
+      state->tab = CreateWindowExA(
+          0, WC_TABCONTROLA, "",
+          WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
+          10, 10, 600, 460, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_TAB,
           g_app->instance, NULL);
+      if (state->tab) {
+        TCITEMA item;
+        memset(&item, 0, sizeof(item));
+        item.mask = TCIF_TEXT;
+        item.pszText = "Audio & Account";
+        TabCtrl_InsertItem(state->tab, 0, &item);
+        item.pszText = "Automation";
+        TabCtrl_InsertItem(state->tab, 1, &item);
+      }
 
-      CreateWindowExA(0, "STATIC", "Speakers",
-                      WS_CHILD | WS_VISIBLE,
-                      240, 20, 200, 20, hwnd, NULL, g_app->instance, NULL);
-      state->list_playback = CreateWindowExA(
-          WS_EX_CLIENTEDGE, "LISTBOX", "",
-          WS_CHILD | WS_VISIBLE | LBS_NOTIFY,
-          240, 45, 200, 120, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_PLAYBACK,
-          g_app->instance, NULL);
+      {
+        int left = 30;
+        int right = 320;
+        int top = 50;
+        HWND label;
+        label = CreateWindowExA(0, "STATIC", "Microphone",
+                                WS_CHILD | WS_VISIBLE,
+                                left, top, 200, 18, hwnd, NULL,
+                                g_app->instance, NULL);
+        settings_register_control(state->audio_controls, &state->audio_count, label);
+        state->list_capture = CreateWindowExA(
+            WS_EX_CLIENTEDGE, "LISTBOX", "",
+            WS_CHILD | WS_VISIBLE | LBS_NOTIFY,
+            left, top + 20, 240, 120, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_CAPTURE,
+            g_app->instance, NULL);
+        settings_register_control(state->audio_controls, &state->audio_count, state->list_capture);
 
-      CreateWindowExA(0, "STATIC", "Playback Volume",
-                      WS_CHILD | WS_VISIBLE,
-                      20, 175, 200, 20, hwnd, NULL, g_app->instance, NULL);
-      state->slider_rx = CreateWindowExA(
-          0, TRACKBAR_CLASS, "",
-          WS_CHILD | WS_VISIBLE | TBS_AUTOTICKS,
-          20, 195, 200, 30, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_RX,
-          g_app->instance, NULL);
-      SendMessage(state->slider_rx, TBM_SETRANGE, TRUE, MAKELPARAM(0, 200));
-      SendMessage(state->slider_rx, TBM_SETPOS, TRUE,
-                  (LPARAM)(g_app->config.rx_level * 100));
+        label = CreateWindowExA(0, "STATIC", "Speakers",
+                                WS_CHILD | WS_VISIBLE,
+                                right, top, 200, 18, hwnd, NULL,
+                                g_app->instance, NULL);
+        settings_register_control(state->audio_controls, &state->audio_count, label);
+        state->list_playback = CreateWindowExA(
+            WS_EX_CLIENTEDGE, "LISTBOX", "",
+            WS_CHILD | WS_VISIBLE | LBS_NOTIFY,
+            right, top + 20, 240, 120, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_PLAYBACK,
+            g_app->instance, NULL);
+        settings_register_control(state->audio_controls, &state->audio_count, state->list_playback);
 
-      CreateWindowExA(0, "STATIC", "Mic Volume",
-                      WS_CHILD | WS_VISIBLE,
-                      240, 175, 200, 20, hwnd, NULL, g_app->instance, NULL);
-      state->slider_tx = CreateWindowExA(
-          0, TRACKBAR_CLASS, "",
-          WS_CHILD | WS_VISIBLE | TBS_AUTOTICKS,
-          240, 195, 200, 30, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_TX,
-          g_app->instance, NULL);
-      SendMessage(state->slider_tx, TBM_SETRANGE, TRUE, MAKELPARAM(0, 200));
-      SendMessage(state->slider_tx, TBM_SETPOS, TRUE,
-                  (LPARAM)(g_app->config.tx_level * 100));
+        label = CreateWindowExA(0, "STATIC", "Playback Volume",
+                                WS_CHILD | WS_VISIBLE,
+                                left, top + 150, 200, 18, hwnd, NULL,
+                                g_app->instance, NULL);
+        settings_register_control(state->audio_controls, &state->audio_count, label);
+        state->slider_rx = CreateWindowExA(
+            0, TRACKBAR_CLASS, "",
+            WS_CHILD | WS_VISIBLE | TBS_AUTOTICKS,
+            left, top + 170, 240, 30, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_RX,
+            g_app->instance, NULL);
+        settings_register_control(state->audio_controls, &state->audio_count, state->slider_rx);
+        SendMessage(state->slider_rx, TBM_SETRANGE, TRUE, MAKELPARAM(0, 200));
+        SendMessage(state->slider_rx, TBM_SETPOS, TRUE,
+                    (LPARAM)(g_app->config.rx_level * 100));
 
-      CreateWindowExA(0, "BUTTON", "Account",
-                      WS_CHILD | WS_VISIBLE | BS_GROUPBOX,
-                      20, 235, 420, 190, hwnd, NULL, g_app->instance, NULL);
-      CreateWindowExA(0, "STATIC", "Domain",
-                      WS_CHILD | WS_VISIBLE,
-                      30, 260, 100, 18, hwnd, NULL, g_app->instance, NULL);
-      state->edit_domain = CreateWindowExA(
-          WS_EX_CLIENTEDGE, "EDIT", "",
-          WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
-          140, 258, 280, 22, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_DOMAIN,
-          g_app->instance, NULL);
-      CreateWindowExA(0, "STATIC", "User",
-                      WS_CHILD | WS_VISIBLE,
-                      30, 288, 100, 18, hwnd, NULL, g_app->instance, NULL);
-      state->edit_user = CreateWindowExA(
-          WS_EX_CLIENTEDGE, "EDIT", "",
-          WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
-          140, 286, 280, 22, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_USER,
-          g_app->instance, NULL);
-      CreateWindowExA(0, "STATIC", "Password",
-                      WS_CHILD | WS_VISIBLE,
-                      30, 316, 100, 18, hwnd, NULL, g_app->instance, NULL);
-      state->edit_password = CreateWindowExA(
-          WS_EX_CLIENTEDGE, "EDIT", "",
-          WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | ES_PASSWORD,
-          140, 314, 280, 22, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_PASSWORD,
-          g_app->instance, NULL);
-      CreateWindowExA(0, "STATIC", "Proxy",
-                      WS_CHILD | WS_VISIBLE,
-                      30, 344, 100, 18, hwnd, NULL, g_app->instance, NULL);
-      state->edit_proxy = CreateWindowExA(
-          WS_EX_CLIENTEDGE, "EDIT", "",
-          WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
-          140, 342, 280, 22, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_PROXY,
-          g_app->instance, NULL);
-      CreateWindowExA(0, "STATIC", "Transport",
-                      WS_CHILD | WS_VISIBLE,
-                      30, 372, 100, 18, hwnd, NULL, g_app->instance, NULL);
-      state->edit_transport = CreateWindowExA(
-          WS_EX_CLIENTEDGE, "EDIT", "",
-          WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
-          140, 370, 120, 22, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_TRANSPORT,
-          g_app->instance, NULL);
-      state->button_register = CreateWindowExA(
-          0, "BUTTON", "Register",
-          WS_CHILD | WS_VISIBLE,
-          280, 368, 140, 26, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_REGISTER,
-          g_app->instance, NULL);
+        label = CreateWindowExA(0, "STATIC", "Mic Volume",
+                                WS_CHILD | WS_VISIBLE,
+                                right, top + 150, 200, 18, hwnd, NULL,
+                                g_app->instance, NULL);
+        settings_register_control(state->audio_controls, &state->audio_count, label);
+        state->slider_tx = CreateWindowExA(
+            0, TRACKBAR_CLASS, "",
+            WS_CHILD | WS_VISIBLE | TBS_AUTOTICKS,
+            right, top + 170, 240, 30, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_TX,
+            g_app->instance, NULL);
+        settings_register_control(state->audio_controls, &state->audio_count, state->slider_tx);
+        SendMessage(state->slider_tx, TBM_SETRANGE, TRUE, MAKELPARAM(0, 200));
+        SendMessage(state->slider_tx, TBM_SETPOS, TRUE,
+                    (LPARAM)(g_app->config.tx_level * 100));
+
+        label = CreateWindowExA(0, "BUTTON", "Account",
+                                WS_CHILD | WS_VISIBLE | BS_GROUPBOX,
+                                left, top + 210, 530, 170, hwnd, NULL,
+                                g_app->instance, NULL);
+        settings_register_control(state->audio_controls, &state->audio_count, label);
+        label = CreateWindowExA(0, "STATIC", "Domain",
+                                WS_CHILD | WS_VISIBLE,
+                                left + 10, top + 235, 100, 18, hwnd, NULL,
+                                g_app->instance, NULL);
+        settings_register_control(state->audio_controls, &state->audio_count, label);
+        state->edit_domain = CreateWindowExA(
+            WS_EX_CLIENTEDGE, "EDIT", "",
+            WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
+            left + 120, top + 233, 380, 22, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_DOMAIN,
+            g_app->instance, NULL);
+        settings_register_control(state->audio_controls, &state->audio_count, state->edit_domain);
+        label = CreateWindowExA(0, "STATIC", "User",
+                                WS_CHILD | WS_VISIBLE,
+                                left + 10, top + 263, 100, 18, hwnd, NULL,
+                                g_app->instance, NULL);
+        settings_register_control(state->audio_controls, &state->audio_count, label);
+        state->edit_user = CreateWindowExA(
+            WS_EX_CLIENTEDGE, "EDIT", "",
+            WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
+            left + 120, top + 261, 380, 22, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_USER,
+            g_app->instance, NULL);
+        settings_register_control(state->audio_controls, &state->audio_count, state->edit_user);
+        label = CreateWindowExA(0, "STATIC", "Password",
+                                WS_CHILD | WS_VISIBLE,
+                                left + 10, top + 291, 100, 18, hwnd, NULL,
+                                g_app->instance, NULL);
+        settings_register_control(state->audio_controls, &state->audio_count, label);
+        state->edit_password = CreateWindowExA(
+            WS_EX_CLIENTEDGE, "EDIT", "",
+            WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | ES_PASSWORD,
+            left + 120, top + 289, 380, 22, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_PASSWORD,
+            g_app->instance, NULL);
+        settings_register_control(state->audio_controls, &state->audio_count, state->edit_password);
+        label = CreateWindowExA(0, "STATIC", "Proxy",
+                                WS_CHILD | WS_VISIBLE,
+                                left + 10, top + 319, 100, 18, hwnd, NULL,
+                                g_app->instance, NULL);
+        settings_register_control(state->audio_controls, &state->audio_count, label);
+        state->edit_proxy = CreateWindowExA(
+            WS_EX_CLIENTEDGE, "EDIT", "",
+            WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
+            left + 120, top + 317, 380, 22, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_PROXY,
+            g_app->instance, NULL);
+        settings_register_control(state->audio_controls, &state->audio_count, state->edit_proxy);
+        label = CreateWindowExA(0, "STATIC", "Transport",
+                                WS_CHILD | WS_VISIBLE,
+                                left + 10, top + 347, 100, 18, hwnd, NULL,
+                                g_app->instance, NULL);
+        settings_register_control(state->audio_controls, &state->audio_count, label);
+        state->edit_transport = CreateWindowExA(
+            WS_EX_CLIENTEDGE, "EDIT", "",
+            WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
+            left + 120, top + 345, 140, 22, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_TRANSPORT,
+            g_app->instance, NULL);
+        settings_register_control(state->audio_controls, &state->audio_count, state->edit_transport);
+        state->button_register = CreateWindowExA(
+            0, "BUTTON", "Register",
+            WS_CHILD | WS_VISIBLE,
+            left + 280, top + 343, 120, 26, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_REGISTER,
+            g_app->instance, NULL);
+        settings_register_control(state->audio_controls, &state->audio_count, state->button_register);
+      }
+
+      {
+        int left = 30;
+        int top = 50;
+        HWND label;
+        label = CreateWindowExA(0, "BUTTON", "Automation",
+                                WS_CHILD | WS_VISIBLE | BS_GROUPBOX,
+                                left, top, 530, 140, hwnd, NULL,
+                                g_app->instance, NULL);
+        settings_register_control(state->automation_controls, &state->automation_count, label);
+        label = CreateWindowExA(0, "STATIC", "Incoming URL Template",
+                                WS_CHILD | WS_VISIBLE,
+                                left + 10, top + 25, 200, 18, hwnd, NULL,
+                                g_app->instance, NULL);
+        settings_register_control(state->automation_controls, &state->automation_count, label);
+        state->edit_url_template = CreateWindowExA(
+            WS_EX_CLIENTEDGE, "EDIT", "",
+            WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
+            left + 10, top + 45, 500, 22, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_URL_TEMPLATE,
+            g_app->instance, NULL);
+        settings_register_control(state->automation_controls, &state->automation_count, state->edit_url_template);
+
+        label = CreateWindowExA(0, "BUTTON", "Recording",
+                                WS_CHILD | WS_VISIBLE | BS_GROUPBOX,
+                                left, top + 160, 530, 160, hwnd, NULL,
+                                g_app->instance, NULL);
+        settings_register_control(state->automation_controls, &state->automation_count, label);
+        state->check_auto_record = CreateWindowExA(
+            0, "BUTTON", "Record all calls automatically",
+            WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+            left + 10, top + 185, 300, 20, hwnd,
+            (HMENU)(UINT_PTR)ID_SETTINGS_AUTO_RECORD,
+            g_app->instance, NULL);
+        settings_register_control(state->automation_controls, &state->automation_count, state->check_auto_record);
+        label = CreateWindowExA(0, "STATIC", "Recording Folder",
+                                WS_CHILD | WS_VISIBLE,
+                                left + 10, top + 215, 200, 18, hwnd, NULL,
+                                g_app->instance, NULL);
+        settings_register_control(state->automation_controls, &state->automation_count, label);
+        state->edit_record_path = CreateWindowExA(
+            WS_EX_CLIENTEDGE, "EDIT", "",
+            WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
+            left + 10, top + 235, 380, 22, hwnd,
+            (HMENU)(UINT_PTR)ID_SETTINGS_RECORD_PATH,
+            g_app->instance, NULL);
+        settings_register_control(state->automation_controls, &state->automation_count, state->edit_record_path);
+        state->button_record_browse = CreateWindowExA(
+            0, "BUTTON", "Browse",
+            WS_CHILD | WS_VISIBLE,
+            left + 400, top + 233, 110, 26, hwnd,
+            (HMENU)(UINT_PTR)ID_SETTINGS_RECORD_BROWSE,
+            g_app->instance, NULL);
+        settings_register_control(state->automation_controls, &state->automation_count, state->button_record_browse);
+      }
 
       CreateWindowExA(0, "BUTTON", "Apply",
                       WS_CHILD | WS_VISIBLE,
-                      240, 440, 90, 30, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_APPLY,
+                      360, 490, 90, 30, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_APPLY,
                       g_app->instance, NULL);
       CreateWindowExA(0, "BUTTON", "Close",
                       WS_CHILD | WS_VISIBLE,
-                      350, 440, 90, 30, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_CLOSE,
+                      470, 490, 90, 30, hwnd, (HMENU)(UINT_PTR)ID_SETTINGS_CLOSE,
                       g_app->instance, NULL);
 
       ui_fill_device_list(state->list_capture, 1, 0);
@@ -592,6 +770,11 @@ static LRESULT CALLBACK settings_wnd_proc(HWND hwnd, UINT msg,
       SetWindowTextA(state->edit_password, g_app->config.sip_password);
       SetWindowTextA(state->edit_proxy, g_app->config.sip_proxy);
       SetWindowTextA(state->edit_transport, g_app->config.sip_transport);
+      SetWindowTextA(state->edit_url_template, g_app->config.incoming_url_template);
+      SetWindowTextA(state->edit_record_path, g_app->config.recording_base_dir);
+      SendMessage(state->check_auto_record, BM_SETCHECK,
+                  g_app->config.auto_record ? BST_CHECKED : BST_UNCHECKED, 0);
+      settings_show_tab(state, 0);
       break;
     }
     case WM_COMMAND: {
@@ -602,6 +785,13 @@ static LRESULT CALLBACK settings_wnd_proc(HWND hwnd, UINT msg,
         case ID_SETTINGS_REGISTER:
           settings_register(state);
           break;
+        case ID_SETTINGS_RECORD_BROWSE: {
+          char folder[MAX_PATH];
+          if (ui_browse_for_folder(folder, sizeof(folder)) == 0) {
+            SetWindowTextA(state->edit_record_path, folder);
+          }
+          break;
+        }
         case ID_SETTINGS_CLOSE:
           DestroyWindow(hwnd);
           break;
@@ -609,6 +799,28 @@ static LRESULT CALLBACK settings_wnd_proc(HWND hwnd, UINT msg,
           break;
       }
       break;
+    }
+    case WM_NOTIFY: {
+      LPNMHDR header = (LPNMHDR)lparam;
+      if (header && header->idFrom == ID_SETTINGS_TAB &&
+          header->code == TCN_SELCHANGE) {
+        int index = TabCtrl_GetCurSel(state->tab);
+        settings_show_tab(state, index);
+      }
+      break;
+    }
+    case WM_CTLCOLORSTATIC:
+    case WM_CTLCOLOREDIT: {
+      HDC hdc = (HDC)wparam;
+      COLORREF bg = g_bg_color;
+      HBRUSH brush = g_bg_brush;
+      if (msg == WM_CTLCOLOREDIT) {
+        bg = g_edit_color;
+        brush = g_edit_brush;
+      }
+      SetBkColor(hdc, bg);
+      SetTextColor(hdc, g_text_color);
+      return (LRESULT)brush;
     }
     case WM_DESTROY:
       free(state);
@@ -626,7 +838,7 @@ static int ui_register_classes(void) {
   wc.hInstance = g_app->instance;
   wc.lpszClassName = APP_TITLE;
   wc.hCursor = LoadCursor(NULL, IDC_ARROW);
-  wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+  wc.hbrBackground = g_bg_brush ? g_bg_brush : (HBRUSH)(COLOR_WINDOW + 1);
   if (!RegisterClassA(&wc)) {
     return -1;
   }
@@ -636,7 +848,7 @@ static int ui_register_classes(void) {
   wc.hInstance = g_app->instance;
   wc.lpszClassName = "WinSoftphoneSettings";
   wc.hCursor = LoadCursor(NULL, IDC_ARROW);
-  wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+  wc.hbrBackground = g_bg_brush ? g_bg_brush : (HBRUSH)(COLOR_WINDOW + 1);
   if (!RegisterClassA(&wc)) {
     return -1;
   }
@@ -657,6 +869,12 @@ int ui_init(app_state_t *app) {
     return -1;
   }
   g_app = app;
+  if (!g_bg_brush) {
+    g_bg_brush = CreateSolidBrush(g_bg_color);
+  }
+  if (!g_edit_brush) {
+    g_edit_brush = CreateSolidBrush(g_edit_color);
+  }
   icex.dwSize = sizeof(icex);
   icex.dwICC = ICC_LISTVIEW_CLASSES | ICC_BAR_CLASSES;
   InitCommonControlsEx(&icex);
@@ -684,10 +902,15 @@ int ui_init(app_state_t *app) {
       WS_CHILD | WS_VISIBLE,
       20, 10, 480, 20, g_hwnd, (HMENU)(UINT_PTR)ID_STATUS_TEXT,
       g_app->instance, NULL);
+  g_reg_indicator = CreateWindowExA(
+      0, "STATIC", "",
+      WS_CHILD | WS_VISIBLE | SS_OWNERDRAW,
+      20, 33, 12, 12, g_hwnd, (HMENU)(UINT_PTR)ID_REG_INDICATOR,
+      g_app->instance, NULL);
   g_line_label = CreateWindowExA(
-      0, "STATIC", "Line: Ready",
+      0, "STATIC", "Line: Offline",
       WS_CHILD | WS_VISIBLE,
-      20, 30, 480, 20, g_hwnd, (HMENU)(UINT_PTR)ID_LINE_TEXT,
+      38, 30, 480, 20, g_hwnd, (HMENU)(UINT_PTR)ID_LINE_TEXT,
       g_app->instance, NULL);
   g_dial_edit = CreateWindowExA(
       WS_EX_CLIENTEDGE, "EDIT", "",
@@ -744,6 +967,11 @@ int ui_init(app_state_t *app) {
       g_app->instance, NULL);
 
   ui_init_history_list(g_hwnd);
+  if (g_history_list) {
+    ListView_SetBkColor(g_history_list, g_bg_color);
+    ListView_SetTextBkColor(g_history_list, g_bg_color);
+    ListView_SetTextColor(g_history_list, g_text_color);
+  }
   g_button_call_selected = CreateWindowExA(
       0, "BUTTON", "Call Selected",
       WS_CHILD | WS_VISIBLE,
@@ -751,6 +979,7 @@ int ui_init(app_state_t *app) {
       g_app->instance, NULL);
   ui_refresh_history_list();
 
+  ui_set_registration_status(0);
   ui_init_tray_icon();
   ShowWindow(g_hwnd, SW_SHOW);
   return 0;
@@ -788,6 +1017,13 @@ void ui_open_url(const char *url) {
 
 void ui_refresh_history(void) {
   ui_refresh_history_list();
+}
+
+void ui_set_registration_status(int is_registered) {
+  g_reg_status = is_registered ? 1 : 0;
+  if (g_reg_indicator) {
+    InvalidateRect(g_reg_indicator, NULL, TRUE);
+  }
 }
 
 static LRESULT CALLBACK ui_wnd_proc(HWND hwnd, UINT msg,
@@ -851,6 +1087,45 @@ static LRESULT CALLBACK ui_wnd_proc(HWND hwnd, UINT msg,
       }
       break;
     }
+    case WM_DRAWITEM: {
+      DRAWITEMSTRUCT *dis = (DRAWITEMSTRUCT *)lparam;
+      if (dis && dis->CtlID == ID_REG_INDICATOR) {
+        HBRUSH dot_brush = CreateSolidBrush(g_reg_status ? RGB(0, 200, 83)
+                                                        : RGB(220, 53, 69));
+        FillRect(dis->hDC, &dis->rcItem, g_bg_brush);
+        HBRUSH old_brush = (HBRUSH)SelectObject(dis->hDC, dot_brush);
+        HPEN pen = CreatePen(PS_SOLID, 1, g_bg_color);
+        HPEN old_pen = (HPEN)SelectObject(dis->hDC, pen);
+        Ellipse(dis->hDC,
+                dis->rcItem.left + 1,
+                dis->rcItem.top + 1,
+                dis->rcItem.right - 1,
+                dis->rcItem.bottom - 1);
+        SelectObject(dis->hDC, old_pen);
+        SelectObject(dis->hDC, old_brush);
+        DeleteObject(pen);
+        DeleteObject(dot_brush);
+        return TRUE;
+      }
+      break;
+    }
+    case WM_CTLCOLORSTATIC:
+    case WM_CTLCOLOREDIT: {
+      HDC hdc = (HDC)wparam;
+      HWND ctrl = (HWND)lparam;
+      COLORREF bg = g_bg_color;
+      HBRUSH brush = g_bg_brush;
+      if (msg == WM_CTLCOLOREDIT) {
+        bg = g_edit_color;
+        brush = g_edit_brush;
+      }
+      SetBkColor(hdc, bg);
+      SetTextColor(hdc, g_text_color);
+      if (ctrl == g_line_label) {
+        SetTextColor(hdc, g_muted_text);
+      }
+      return (LRESULT)brush;
+    }
     case WM_APP_STATUS: {
       char *text = (char *)lparam;
       if (text) {
@@ -893,6 +1168,14 @@ static LRESULT CALLBACK ui_wnd_proc(HWND hwnd, UINT msg,
       return 0;
     case WM_DESTROY:
       ui_remove_tray_icon();
+      if (g_bg_brush) {
+        DeleteObject(g_bg_brush);
+        g_bg_brush = NULL;
+      }
+      if (g_edit_brush) {
+        DeleteObject(g_edit_brush);
+        g_edit_brush = NULL;
+      }
       PostQuitMessage(0);
       break;
     default:

@@ -25,6 +25,12 @@ static void main_on_call_end(void *user_data, pjsua_call_id call_id,
   app_on_call_end(app, call_id, duration_sec, direction, cname, uri);
 }
 
+static void main_on_reg_state(void *user_data, int reg_status,
+                              const char *status_text, int is_active) {
+  app_state_t *app = (app_state_t *)user_data;
+  app_on_reg_state(app, reg_status, status_text, is_active);
+}
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
                    LPSTR lpCmdLine, int nCmdShow) {
   app_state_t app;
@@ -48,6 +54,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
   callbacks.on_incoming_call = main_on_incoming_call;
   callbacks.on_call_state = main_on_call_state;
   callbacks.on_call_end = main_on_call_end;
+  callbacks.on_reg_state = main_on_reg_state;
   sip_set_callbacks(&app.sip, &callbacks, &app);
 
   if (sip_start(&app.sip) != 0) {

@@ -41,6 +41,8 @@ void app_on_call_state(app_state_t *app, pjsua_call_id call_id,
 void app_on_call_end(app_state_t *app, pjsua_call_id call_id,
                      int duration_sec, const char *direction,
                      const char *cname, const char *uri);
+void app_on_reg_state(app_state_t *app, int reg_status,
+                      const char *status_text, int is_active);
 
 #ifdef __cplusplus
 }

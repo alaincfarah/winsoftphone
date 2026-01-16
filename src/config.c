@@ -24,9 +24,14 @@ static int config_file_exists(const char *path) {
 static int config_write_defaults_to_path(const char *path,
                                          const app_config_t *config) {
   char escaped_url[512];
+  char escaped_record_dir[512];
   char output[2048];
   if (json_escape_string(config->incoming_url_template,
                          escaped_url, sizeof(escaped_url)) != 0) {
+    return -1;
+  }
+  if (json_escape_string(config->recording_base_dir,
+                         escaped_record_dir, sizeof(escaped_record_dir)) != 0) {
     return -1;
   }
   snprintf(output, sizeof(output),
@@ -44,6 +49,10 @@ static int config_write_defaults_to_path(const char *path,
            "    \"rx_level\": %.2f,\n"
            "    \"tx_level\": %.2f\n"
            "  },\n"
+           "  \"recording\": {\n"
+           "    \"auto_record\": %d,\n"
+           "    \"base_dir\": \"%s\"\n"
+           "  },\n"
            "  \"ui\": {\n"
            "    \"incoming_url_template\": \"%s\"\n"
            "  }\n"
@@ -57,6 +66,8 @@ static int config_write_defaults_to_path(const char *path,
            config->playback_device,
            config->rx_level,
            config->tx_level,
+           config->auto_record,
+           escaped_record_dir,
            escaped_url);
   return storage_write_file(path, output);
 }
@@ -77,6 +88,8 @@ void config_set_defaults(app_config_t *config) {
   config->tx_level = 1.0f;
   strcpy(config->incoming_url_template,
          "https://crm.example.com/lookup?cname={cname}");
+  config->auto_record = 0;
+  config->recording_base_dir[0] = '\0';
 }
 
 int config_get_path(char *out_path, size_t out_size) {
@@ -115,6 +128,7 @@ static int config_parse_json(app_config_t *config, const char *json,
   int root = 0;
   int sip_index;
   int audio_index;
+  int recording_index;
   int ui_index;
 
   if (token_count <= 0 || tokens[root].type != JSMN_OBJECT) {
@@ -173,6 +187,33 @@ static int config_parse_json(app_config_t *config, const char *json,
                                 audio_index, "tx_level");
     if (value_index >= 0) {
       json_token_to_float(json, &tokens[value_index], &config->tx_level);
+    }
+  }
+
+  recording_index = json_find_key(json, tokens, token_count, root, "recording");
+  if (recording_index >= 0 && tokens[recording_index].type == JSMN_OBJECT) {
+    int value_index;
+    value_index = json_find_key(json, tokens, token_count,
+                                recording_index, "auto_record");
+    if (value_index >= 0) {
+      char buffer[16];
+      if (json_token_copy(json, &tokens[value_index],
+                          buffer, sizeof(buffer)) == 0) {
+        if (_stricmp(buffer, "true") == 0) {
+          config->auto_record = 1;
+        } else if (_stricmp(buffer, "false") == 0) {
+          config->auto_record = 0;
+        } else {
+          config->auto_record = (int)strtol(buffer, NULL, 10);
+        }
+      }
+    }
+    value_index = json_find_key(json, tokens, token_count,
+                                recording_index, "base_dir");
+    if (value_index >= 0) {
+      json_token_copy(json, &tokens[value_index],
+                      config->recording_base_dir,
+                      sizeof(config->recording_base_dir));
     }
   }
 

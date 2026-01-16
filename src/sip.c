@@ -244,6 +244,30 @@ static void sip_on_call_media_state(pjsua_call_id call_id) {
   }
 }
 
+static void sip_on_reg_state2(pjsua_acc_id acc_id, pjsua_reg_info *info) {
+  pjsua_acc_info acc_info;
+  char status_text[64];
+  int is_active = 0;
+  int reg_status = 0;
+  PJ_UNUSED_ARG(info);
+
+  if (pjsua_acc_get_info(acc_id, &acc_info) == PJ_SUCCESS) {
+    sip_pj_str_to_cstr(status_text, sizeof(status_text),
+                       &acc_info.reg_status_text);
+    reg_status = acc_info.reg_status;
+    is_active = (reg_status >= 200 && reg_status < 300);
+  } else {
+    status_text[0] = '\0';
+  }
+
+  if (g_client && g_client->callbacks.on_reg_state) {
+    g_client->callbacks.on_reg_state(g_client->callback_user_data,
+                                     reg_status,
+                                     status_text,
+                                     is_active);
+  }
+}
+
 static void sip_configure_codecs(void) {
   pj_str_t codec_g729 = pj_str("G729/8000/1");
   pj_str_t codec_pcmu = pj_str("PCMU/8000/1");
@@ -279,6 +303,7 @@ int sip_init(sip_client_t *client) {
   cfg.cb.on_incoming_call = &sip_on_incoming_call;
   cfg.cb.on_call_state = &sip_on_call_state;
   cfg.cb.on_call_media_state = &sip_on_call_media_state;
+  cfg.cb.on_reg_state2 = &sip_on_reg_state2;
 
   pjsua_logging_config_default(&log_cfg);
   log_cfg.console_level = 4;

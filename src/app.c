@@ -127,12 +127,18 @@ int app_build_recording_path(app_state_t *app, char *out_path, size_t out_size) 
   if (!app || !out_path || out_size == 0) {
     return -1;
   }
-  if (storage_get_appdata_path(appdata, sizeof(appdata)) != 0) {
-    return -1;
-  }
-  if (storage_join_path(appdata, "recordings",
-                        recordings_dir, sizeof(recordings_dir)) != 0) {
-    return -1;
+  if (app->config.recording_base_dir[0] != '\0') {
+    strncpy(recordings_dir, app->config.recording_base_dir,
+            sizeof(recordings_dir) - 1);
+    recordings_dir[sizeof(recordings_dir) - 1] = '\0';
+  } else {
+    if (storage_get_appdata_path(appdata, sizeof(appdata)) != 0) {
+      return -1;
+    }
+    if (storage_join_path(appdata, "recordings",
+                          recordings_dir, sizeof(recordings_dir)) != 0) {
+      return -1;
+    }
   }
   if (storage_ensure_dir_recursive(recordings_dir) != 0) {
     return -1;
@@ -176,8 +182,24 @@ void app_on_call_state(app_state_t *app, pjsua_call_id call_id,
   snprintf(status, sizeof(status), "Call state: %s", state_text ? state_text : "");
   ui_set_status_text(status);
 
+  if (state == PJSIP_INV_STATE_CONFIRMED &&
+      app->config.auto_record &&
+      !app->recording) {
+    char recording_path[MAX_PATH];
+    if (app_build_recording_path(app, recording_path, sizeof(recording_path)) == 0) {
+      if (sip_start_recording(&app->sip, recording_path) == 0) {
+        app->recording = 1;
+        ui_set_status_text("Automatic recording started");
+      }
+    }
+  }
+
   if (state == PJSIP_INV_STATE_DISCONNECTED) {
     app->call_on_hold = 0;
+    if (app->recording) {
+      sip_stop_recording(&app->sip);
+      app->recording = 0;
+    }
   }
 }
 
@@ -206,4 +228,21 @@ void app_on_call_end(app_state_t *app, pjsua_call_id call_id,
   history_add(&app->history, &entry);
   ui_set_status_text("Call ended");
   ui_refresh_history();
+}
+
+void app_on_reg_state(app_state_t *app, int reg_status,
+                      const char *status_text, int is_active) {
+  char line[256];
+  if (!app) {
+    return;
+  }
+  if (is_active) {
+    snprintf(line, sizeof(line), "Line: Registered");
+  } else if (status_text && status_text[0] != '\0') {
+    snprintf(line, sizeof(line), "Line: %s (%d)", status_text, reg_status);
+  } else {
+    snprintf(line, sizeof(line), "Line: Offline");
+  }
+  ui_set_line_text(line);
+  ui_set_registration_status(is_active);
 }

@@ -18,6 +18,7 @@ void ui_set_status_text(const char *text);
 void ui_set_line_text(const char *text);
 void ui_open_url(const char *url);
 void ui_refresh_history(void);
+void ui_set_registration_status(int is_registered);
 
 #ifdef __cplusplus
 }
