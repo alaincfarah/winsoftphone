@@ -525,7 +525,8 @@ int sip_list_audio_devices(sip_audio_device_t *devices, unsigned *count) {
     devices[i].id = info[i].id;
     devices[i].input_count = info[i].input_count;
     devices[i].output_count = info[i].output_count;
-    snprintf(devices[i].name, sizeof(devices[i].name), "%s", info[i].name);
+    snprintf(devices[i].name, sizeof(devices[i].name), "%s",
+             (const char *)info[i].name);
   }
   *count = dev_count;
   return 0;

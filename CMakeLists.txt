@@ -11,6 +11,7 @@ endif()
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
+add_definitions(-DWIN32_LEAN_AND_MEAN)
 
 add_executable(winsoftphone
   src/main.c

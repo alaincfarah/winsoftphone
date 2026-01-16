@@ -1,6 +1,10 @@
 #ifndef SIP_H
 #define SIP_H
 
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <winsock2.h>
 #include <stddef.h>
 #include <pjsua.h>
 

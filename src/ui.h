@@ -1,6 +1,9 @@
 #ifndef UI_H
 #define UI_H
 
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
 
 #include "app.h"
