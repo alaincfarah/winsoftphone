@@ -14,7 +14,6 @@ jobs:
     env:
       VCPKG_ROOT: C:\vcpkg
       VCPKG_DEFAULT_TRIPLET: x64-windows
-      PJSIP_DIR: C:\vcpkg\installed\x64-windows
 
     steps:
       - name: Checkout
@@ -28,12 +27,24 @@ jobs:
           }
           & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat"
 
-      - name: Install PJSIP with TLS
+      - name: Install OpenSSL and libsamplerate
         shell: powershell
         run: |
           & "$env:VCPKG_ROOT\vcpkg.exe" install openssl:x64-windows
           & "$env:VCPKG_ROOT\vcpkg.exe" install libsamplerate:x64-windows
-          & "$env:VCPKG_ROOT\vcpkg.exe" install pjsip:x64-windows
+
+      - name: Build PJSIP from source
+        shell: powershell
+        run: |
+          git clone --depth 1 https://github.com/pjsip/pjproject pjproject
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsInstall = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vsInstall) { throw "Visual Studio installation not found." }
+          $vcvars = Join-Path $vsInstall "VC\Auxiliary\Build\vcvars64.bat"
+          $opensslRoot = "$env:VCPKG_ROOT\installed\x64-windows"
+          $samplerateRoot = "$env:VCPKG_ROOT\installed\x64-windows"
+          cmd /c "call `"$vcvars`" && cd pjproject && python configure.py --with-ssl=`"$opensslRoot`" --with-libsamplerate=`"$samplerateRoot`" && nmake /f Makefile"
+          Add-Content $env:GITHUB_ENV "PJSIP_DIR=$(Resolve-Path .\pjproject)"
 
       - name: Configure
         shell: powershell
@@ -46,11 +57,13 @@ jobs:
         run: |
           cmake --build build --config Release
 
-      - name: Stage PJSIP runtime DLLs
+      - name: Stage runtime DLLs
         shell: powershell
         run: |
-          New-Item -ItemType Directory -Force pjsip | Out-Null
-          Copy-Item "$env:PJSIP_DIR\bin\*.dll" -Destination "pjsip" -Force
+          New-Item -ItemType Directory -Force pjsip\runtime | Out-Null
+          Copy-Item "$env:PJSIP_DIR\bin\*.dll" -Destination "pjsip\runtime" -Force -ErrorAction SilentlyContinue
+          Copy-Item "$env:PJSIP_DIR\lib\*.dll" -Destination "pjsip\runtime" -Force -ErrorAction SilentlyContinue
+          Copy-Item "$env:VCPKG_ROOT\installed\x64-windows\bin\*.dll" -Destination "pjsip\runtime" -Force
 
       - name: Package installer
         shell: powershell

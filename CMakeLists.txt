@@ -6,7 +6,7 @@ if(NOT PJSIP_DIR AND DEFINED ENV{PJSIP_DIR})
 endif()
 
 if(NOT PJSIP_DIR)
-  message(FATAL_ERROR "PJSIP_DIR is required (root with include/ and lib/).")
+  message(FATAL_ERROR "PJSIP_DIR is required (root with headers/libs).")
 endif()
 
 set(CMAKE_C_STANDARD 11)
@@ -25,17 +25,61 @@ add_executable(winsoftphone
   src/jsmn.c
 )
 
-target_include_directories(winsoftphone PRIVATE
-  ${CMAKE_CURRENT_SOURCE_DIR}/src
+set(PJSIP_INCLUDE_DIRS "")
+set(PJSIP_LIB_DIRS "")
+
+set(PJSIP_INCLUDE_CANDIDATES
   ${PJSIP_DIR}/include
+  ${PJSIP_DIR}/pjsip/include
+  ${PJSIP_DIR}/pjsip/include/pjsua-lib
+  ${PJSIP_DIR}/pjlib/include
+  ${PJSIP_DIR}/pjlib-util/include
+  ${PJSIP_DIR}/pjnath/include
+  ${PJSIP_DIR}/pjmedia/include
 )
 
-target_link_directories(winsoftphone PRIVATE ${PJSIP_DIR}/lib)
+foreach(dir IN LISTS PJSIP_INCLUDE_CANDIDATES)
+  if(EXISTS "${dir}")
+    list(APPEND PJSIP_INCLUDE_DIRS "${dir}")
+  endif()
+endforeach()
+
+if(PJSIP_INCLUDE_DIRS STREQUAL "")
+  message(FATAL_ERROR "Could not locate PJSIP headers under ${PJSIP_DIR}.")
+endif()
+
+set(PJSIP_LIB_CANDIDATES
+  ${PJSIP_DIR}/lib
+  ${PJSIP_DIR}/pjsip/lib
+  ${PJSIP_DIR}/pjlib/lib
+  ${PJSIP_DIR}/pjlib-util/lib
+  ${PJSIP_DIR}/pjnath/lib
+  ${PJSIP_DIR}/pjmedia/lib
+)
+
+foreach(dir IN LISTS PJSIP_LIB_CANDIDATES)
+  if(EXISTS "${dir}")
+    list(APPEND PJSIP_LIB_DIRS "${dir}")
+  endif()
+endforeach()
+
+if(PJSIP_LIB_DIRS STREQUAL "")
+  message(FATAL_ERROR "Could not locate PJSIP libraries under ${PJSIP_DIR}.")
+endif()
+
+target_include_directories(winsoftphone PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/src
+  ${PJSIP_INCLUDE_DIRS}
+)
+
+target_link_directories(winsoftphone PRIVATE ${PJSIP_LIB_DIRS})
 
 target_link_libraries(winsoftphone PRIVATE
   pjsua
   pjsip-ua
+  pjsip-simple
   pjsip
+  pjnath
   pjmedia
   pjmedia-audiodev
   pjmedia-codec

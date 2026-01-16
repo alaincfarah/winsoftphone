@@ -12,7 +12,7 @@ Source: "{#SourcePath}\build\Release\winsoftphone.exe"; DestDir: "{app}"; Flags:
 Source: "{#SourcePath}\config\default_config.json"; DestDir: "{app}\config"; Flags: ignoreversion
 Source: "{#SourcePath}\config\default_contacts.json"; DestDir: "{app}\config"; Flags: ignoreversion
 Source: "{#SourcePath}\config\default_history.json"; DestDir: "{app}\config"; Flags: ignoreversion
-Source: "{#SourcePath}\pjsip\*.dll"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
+Source: "{#SourcePath}\pjsip\runtime\*.dll"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\WinSoftphone"; Filename: "{app}\winsoftphone.exe"
