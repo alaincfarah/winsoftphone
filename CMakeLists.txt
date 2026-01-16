@@ -9,6 +9,18 @@ if(NOT PJSIP_DIR)
   message(FATAL_ERROR "PJSIP_DIR is required (root with headers/libs).")
 endif()
 
+if(NOT OPENSSL_ROOT_DIR AND DEFINED ENV{OPENSSL_ROOT_DIR})
+  set(OPENSSL_ROOT_DIR "$ENV{OPENSSL_ROOT_DIR}")
+endif()
+if(NOT OPENSSL_ROOT_DIR AND DEFINED ENV{VCPKG_ROOT})
+  set(OPENSSL_ROOT_DIR "$ENV{VCPKG_ROOT}/installed/x64-windows")
+endif()
+if(OPENSSL_ROOT_DIR)
+  list(APPEND CMAKE_PREFIX_PATH "${OPENSSL_ROOT_DIR}")
+endif()
+
+find_package(OpenSSL REQUIRED)
+
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
@@ -85,6 +97,8 @@ target_link_libraries(winsoftphone PRIVATE
   pjmedia-codec
   pjlib
   pjlib-util
+  OpenSSL::SSL
+  OpenSSL::Crypto
   ws2_32
   winmm
   comctl32
@@ -92,3 +106,11 @@ target_link_libraries(winsoftphone PRIVATE
   ole32
   uuid
 )
+
+if(DEFINED ENV{VCPKG_ROOT})
+  set(_VCPKG_LIB_DIR "$ENV{VCPKG_ROOT}/installed/x64-windows/lib")
+endif()
+find_library(SAMPLERATE_LIBRARY NAMES samplerate HINTS ${_VCPKG_LIB_DIR})
+if(SAMPLERATE_LIBRARY)
+  target_link_libraries(winsoftphone PRIVATE ${SAMPLERATE_LIBRARY})
+endif()
