@@ -1,6 +1,14 @@
 cmake_minimum_required(VERSION 3.20)
 project(winsoftphone C)
 
+if(NOT PJSIP_DIR AND DEFINED ENV{PJSIP_DIR})
+  set(PJSIP_DIR "$ENV{PJSIP_DIR}")
+endif()
+
+if(NOT PJSIP_DIR)
+  message(FATAL_ERROR "PJSIP_DIR is required (root with include/ and lib/).")
+endif()
+
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 

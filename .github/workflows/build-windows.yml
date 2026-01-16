@@ -1,0 +1,62 @@
+name: Build Windows Installer
+
+on:
+  push:
+    branches:
+      - cursor/windows-softphone-client-ac85
+  pull_request:
+    branches:
+      - cursor/windows-softphone-client-ac85
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      VCPKG_ROOT: C:\vcpkg
+      VCPKG_DEFAULT_TRIPLET: x64-windows
+      PJSIP_DIR: C:\vcpkg\installed\x64-windows
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare vcpkg
+        shell: powershell
+        run: |
+          if (!(Test-Path "$env:VCPKG_ROOT")) {
+            git clone https://github.com/microsoft/vcpkg $env:VCPKG_ROOT
+          }
+          & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat"
+
+      - name: Install PJSIP with TLS
+        shell: powershell
+        run: |
+          & "$env:VCPKG_ROOT\vcpkg.exe" install openssl:x64-windows
+          & "$env:VCPKG_ROOT\vcpkg.exe" install pjsip:x64-windows
+
+      - name: Configure
+        shell: powershell
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64 `
+            -DPJSIP_DIR="$env:PJSIP_DIR"
+
+      - name: Build
+        shell: powershell
+        run: |
+          cmake --build build --config Release
+
+      - name: Package installer
+        shell: powershell
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) {
+            $iscc = "iscc"
+          }
+          & $iscc installer.iss
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WinSoftphoneInstaller
+          path: |
+            WinSoftphoneSetup*.exe
