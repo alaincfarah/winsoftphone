@@ -56,9 +56,14 @@ jobs:
           $opensslRoot = "$env:VCPKG_ROOT\installed\x64-windows"
           cmake -S pjproject -B pjproject/build_pjsip -G "Visual Studio 17 2022" -A x64 `
             -DPJ_HAS_SSL_SOCK=1 `
+            -DPJ_SKIP_EXPERIMENTAL_NOTICE=ON `
+            -DBUILD_TESTING=OFF `
             -DOPENSSL_ROOT_DIR="$opensslRoot" `
             -DCMAKE_PREFIX_PATH="$opensslRoot"
-          cmake --build pjproject/build_pjsip --config Release
+          cmake --build pjproject/build_pjsip --config Release --target `
+            pjlib pjlib-ssl pjlib-util pjnath pjmedia pjmedia-codec `
+            pjmedia-audiodev pjmedia-videodev pjsip pjsip-simple `
+            pjsip-ua pjsua-lib
           $pjSdk = Join-Path $pwd "pjsip_sdk"
           New-Item -ItemType Directory -Force "$pjSdk\pjsip\include" | Out-Null
           New-Item -ItemType Directory -Force "$pjSdk\pjlib\include" | Out-Null

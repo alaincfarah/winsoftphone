@@ -92,9 +92,11 @@ target_link_libraries(winsoftphone PRIVATE
   pjsip-simple
   pjsip
   pjnath
+  pjlib-ssl
   pjmedia
   pjmedia-audiodev
   pjmedia-codec
+  pjmedia-videodev
   pjlib
   pjlib-util
   OpenSSL::SSL
