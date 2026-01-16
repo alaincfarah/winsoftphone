@@ -38,19 +38,21 @@ jobs:
         run: |
           git clone --depth 1 https://github.com/pjsip/pjproject pjproject
           New-Item -ItemType Directory -Force "pjproject\pjlib\include\pj" | Out-Null
-          @"
-#define PJMEDIA_HAS_VIDEO 0
-#define PJMEDIA_HAS_LIBYUV 0
-#define PJMEDIA_HAS_SPEEX_CODEC 0
-#define PJMEDIA_HAS_GSM_CODEC 0
-#define PJMEDIA_HAS_ILBC_CODEC 0
-#define PJMEDIA_HAS_G7221_CODEC 0
-#define PJMEDIA_HAS_SRTP 0
-#define PJMEDIA_HAS_SRTP2 0
-#define PJMEDIA_HAS_LIBRESAMPLE 0
-#define PJMEDIA_HAS_LIBSAMPLERATE 1
-#define PJMEDIA_RESAMPLE_IMP PJMEDIA_RESAMPLE_LIBSAMPLERATE
-"@ | Set-Content -Encoding ASCII "pjproject\pjlib\include\pj\config_site.h"
+          $cfgLines = @(
+            "#define PJMEDIA_HAS_VIDEO 0",
+            "#define PJMEDIA_HAS_LIBYUV 0",
+            "#define PJMEDIA_HAS_SPEEX_CODEC 0",
+            "#define PJMEDIA_HAS_GSM_CODEC 0",
+            "#define PJMEDIA_HAS_ILBC_CODEC 0",
+            "#define PJMEDIA_HAS_G7221_CODEC 0",
+            "#define PJMEDIA_HAS_SRTP 0",
+            "#define PJMEDIA_HAS_SRTP2 0",
+            "#define PJMEDIA_HAS_LIBRESAMPLE 0",
+            "#define PJMEDIA_HAS_LIBSAMPLERATE 1",
+            "#define PJMEDIA_RESAMPLE_IMP PJMEDIA_RESAMPLE_LIBSAMPLERATE"
+          )
+          Set-Content -Encoding ASCII "pjproject\pjlib\include\pj\config_site.h" `
+            -Value ($cfgLines -join "`r`n")
           $opensslRoot = "$env:VCPKG_ROOT\installed\x64-windows"
           cmake -S pjproject -B pjproject/build_pjsip -G "Visual Studio 17 2022" -A x64 `
             -DPJ_HAS_SSL_SOCK=1 `
