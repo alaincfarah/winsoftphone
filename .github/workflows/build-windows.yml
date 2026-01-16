@@ -32,6 +32,7 @@ jobs:
         shell: powershell
         run: |
           & "$env:VCPKG_ROOT\vcpkg.exe" install openssl:x64-windows
+          & "$env:VCPKG_ROOT\vcpkg.exe" install libsamplerate:x64-windows
           & "$env:VCPKG_ROOT\vcpkg.exe" install pjsip:x64-windows
 
       - name: Configure
@@ -44,6 +45,12 @@ jobs:
         shell: powershell
         run: |
           cmake --build build --config Release
+
+      - name: Stage PJSIP runtime DLLs
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force pjsip | Out-Null
+          Copy-Item "$env:PJSIP_DIR\bin\*.dll" -Destination "pjsip" -Force
 
       - name: Package installer
         shell: powershell
