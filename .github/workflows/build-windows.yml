@@ -37,14 +37,28 @@ jobs:
         shell: powershell
         run: |
           git clone --depth 1 https://github.com/pjsip/pjproject pjproject
-          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $vsInstall = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-          if (-not $vsInstall) { throw "Visual Studio installation not found." }
-          $vcvars = Join-Path $vsInstall "VC\Auxiliary\Build\vcvars64.bat"
+          New-Item -ItemType Directory -Force "pjproject\pjlib\include\pj" | Out-Null
+          New-Item -ItemType File -Force "pjproject\pjlib\include\pj\config_site.h" | Out-Null
           $opensslRoot = "$env:VCPKG_ROOT\installed\x64-windows"
-          $samplerateRoot = "$env:VCPKG_ROOT\installed\x64-windows"
-          cmd /c "call `"$vcvars`" && cd pjproject && python configure.py --with-ssl=`"$opensslRoot`" --with-libsamplerate=`"$samplerateRoot`" && nmake /f Makefile"
-          Add-Content $env:GITHUB_ENV "PJSIP_DIR=$(Resolve-Path .\pjproject)"
+          cmake -S pjproject -B pjproject/build_pjsip -G "Visual Studio 17 2022" -A x64 `
+            -DPJ_HAS_SSL_SOCK=1 `
+            -DOPENSSL_ROOT_DIR="$opensslRoot" `
+            -DCMAKE_PREFIX_PATH="$opensslRoot"
+          cmake --build pjproject/build_pjsip --config Release
+          $pjSdk = Join-Path $pwd "pjsip_sdk"
+          New-Item -ItemType Directory -Force "$pjSdk\pjsip\include" | Out-Null
+          New-Item -ItemType Directory -Force "$pjSdk\pjlib\include" | Out-Null
+          New-Item -ItemType Directory -Force "$pjSdk\pjlib-util\include" | Out-Null
+          New-Item -ItemType Directory -Force "$pjSdk\pjnath\include" | Out-Null
+          New-Item -ItemType Directory -Force "$pjSdk\pjmedia\include" | Out-Null
+          Copy-Item "pjproject\pjsip\include\*" -Destination "$pjSdk\pjsip\include" -Recurse -Force
+          Copy-Item "pjproject\pjlib\include\*" -Destination "$pjSdk\pjlib\include" -Recurse -Force
+          Copy-Item "pjproject\pjlib-util\include\*" -Destination "$pjSdk\pjlib-util\include" -Recurse -Force
+          Copy-Item "pjproject\pjnath\include\*" -Destination "$pjSdk\pjnath\include" -Recurse -Force
+          Copy-Item "pjproject\pjmedia\include\*" -Destination "$pjSdk\pjmedia\include" -Recurse -Force
+          New-Item -ItemType Directory -Force "$pjSdk\lib" | Out-Null
+          Get-ChildItem -Path "pjproject\build_pjsip" -Recurse -Filter *.lib -ErrorAction SilentlyContinue | Copy-Item -Destination "$pjSdk\lib" -Force
+          Add-Content $env:GITHUB_ENV "PJSIP_DIR=$((Resolve-Path $pjSdk).Path)"
 
       - name: Configure
         shell: powershell
@@ -61,8 +75,10 @@ jobs:
         shell: powershell
         run: |
           New-Item -ItemType Directory -Force pjsip\runtime | Out-Null
-          Copy-Item "$env:PJSIP_DIR\bin\*.dll" -Destination "pjsip\runtime" -Force -ErrorAction SilentlyContinue
-          Copy-Item "$env:PJSIP_DIR\lib\*.dll" -Destination "pjsip\runtime" -Force -ErrorAction SilentlyContinue
+          $pjDlls = Get-ChildItem -Path "pjproject\build_pjsip" -Recurse -Filter *.dll -ErrorAction SilentlyContinue
+          if ($pjDlls) {
+            $pjDlls | Copy-Item -Destination "pjsip\runtime" -Force
+          }
           Copy-Item "$env:VCPKG_ROOT\installed\x64-windows\bin\*.dll" -Destination "pjsip\runtime" -Force
 
       - name: Package installer
