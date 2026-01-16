@@ -82,6 +82,7 @@ static int g_allow_close = 0;
 
 static LRESULT CALLBACK ui_wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
 static LRESULT CALLBACK settings_wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
+static void ui_handle_call(void);
 
 static void ui_append_dial_text(const char *text) {
   char buffer[256];
