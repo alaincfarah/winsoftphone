@@ -129,4 +129,4 @@ jobs:
         with:
           name: WinSoftphoneInstaller
           path: |
-            WinSoftphoneSetup*.exe
+            dist/WinSoftphoneSetup*.exe

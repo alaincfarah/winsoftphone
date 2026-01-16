@@ -4,6 +4,7 @@ AppVersion=0.1.0
 DefaultDirName={pf}\WinSoftphone
 DefaultGroupName=WinSoftphone
 OutputBaseFilename=WinSoftphoneSetup
+OutputDir={#SourcePath}\dist
 Compression=lzma2
 SolidCompression=yes
 
