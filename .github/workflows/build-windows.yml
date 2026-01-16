@@ -61,7 +61,7 @@ jobs:
             -DOPENSSL_ROOT_DIR="$opensslRoot" `
             -DCMAKE_PREFIX_PATH="$opensslRoot"
           cmake --build pjproject/build_pjsip --config Release --target `
-            pjlib pjlib-ssl pjlib-util pjnath pjmedia pjmedia-codec `
+            pjlib pjlib-util pjnath pjmedia pjmedia-codec `
             pjmedia-audiodev pjmedia-videodev pjsip pjsip-simple `
             pjsip-ua pjsua-lib
           $pjSdk = Join-Path $pwd "pjsip_sdk"
